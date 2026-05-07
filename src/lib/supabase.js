@@ -1,9 +1,2 @@
-import { createClient } from '@supabase/supabase-js'
-
-const url = import.meta.env.VITE_SUPABASE_URL
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-export const supabase = createClient(url, key, {
-  realtime: { enabled: false },
-  auth: { persistSession: true, storageKey: 'jesa-auth' },
-})
+// Fichier conservé pour compatibilité — Supabase non utilisé (mode frontend localStorage)
+export const supabase = null

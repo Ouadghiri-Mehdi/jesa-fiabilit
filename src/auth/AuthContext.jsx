@@ -1,17 +1,16 @@
 // src/auth/AuthContext.jsx
-import { createContext, useContext, useState, useCallback, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { createContext, useContext, useState, useCallback } from 'react'
 
-// Site keys connus pour les vues cross-site (localStorage — sera migré vers Supabase)
 const SITE_KEYS = ['rabat', 'jorf', 'casa', 'khb']
 
-const DATA_KEYS = [
-  'jesa_arrets',
-  'jesa_seuils',
-  'jesa_equipment_list',
-  'jesa_rca_sessions',
-  'jesa_participants_list',
+const LOCAL_USERS = [
+  { email: 'mehdi@jesa.ma',     password: 'Jesa2025!', site: 'Rabat',        siteKey: 'rabat', role: 'admin', nom: 'Ouadghiri', prenom: 'Mehdi' },
+  { email: 'chaimae@jesa.ma',   password: 'Jesa2025!', site: 'Jorf Lasfar',  siteKey: 'jorf',  role: 'user',  nom: 'User',      prenom: 'Chaimae' },
+  { email: 'casa@jesa.ma',      password: 'Jesa2025!', site: 'Casablanca',   siteKey: 'casa',  role: 'user',  nom: 'User',      prenom: 'Casa' },
+  { email: 'kherbiga@jesa.ma',  password: 'Jesa2025!', site: 'Khouribga',    siteKey: 'khb',   role: 'user',  nom: 'User',      prenom: 'Kherbiga' },
 ]
+
+const SESSION_KEY = 'jesa_session'
 
 function syncCurrentUserSessions(currentSiteKey) {
   if (!currentSiteKey) return
@@ -60,66 +59,41 @@ export function markNotifSeen(currentSiteKey) {
 
 const AuthContext = createContext(null)
 
-async function fetchProfile(userId) {
-  const { data } = await supabase
-    .from('profiles')
-    .select('nom, prenom, role, site_id, sites(nom, code)')
-    .eq('id', userId)
-    .single()
-  return {
-    site:    data?.sites?.nom  || '',
-    siteKey: (data?.sites?.code || '').toLowerCase(),
-    siteId:  data?.site_id     || null,
-    role:    data?.role         || 'user',
-    nom:     data?.nom          || '',
-    prenom:  data?.prenom       || '',
-  }
-}
-
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    // Restaurer la session existante
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        const profile = await fetchProfile(session.user.id)
-        setUser({ id: session.user.id, email: session.user.email, ...profile })
-      }
-      setLoading(false)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        const profile = await fetchProfile(session.user.id)
-        setUser({ id: session.user.id, email: session.user.email, ...profile })
-      } else {
-        setUser(null)
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const login = useCallback(async (email, password) => {
+  const [user, setUser] = useState(() => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) console.error('Login error:', error.message)
-      return !error
-    } catch (e) {
-      console.error('Login exception:', e)
-      return false
+      const stored = localStorage.getItem(SESSION_KEY)
+      return stored ? JSON.parse(stored) : null
+    } catch { return null }
+  })
+
+  const login = useCallback((email, password) => {
+    const found = LOCAL_USERS.find(
+      u => u.email === email.trim().toLowerCase() && u.password === password
+    )
+    if (!found) return false
+    const u = {
+      id:       found.siteKey,
+      email:    found.email,
+      site:     found.site,
+      siteKey:  found.siteKey,
+      role:     found.role,
+      nom:      found.nom,
+      prenom:   found.prenom,
+      username: `${found.prenom} ${found.nom}`,
     }
+    setUser(u)
+    localStorage.setItem(SESSION_KEY, JSON.stringify(u))
+    return true
   }, [])
 
-  const logout = useCallback(async () => {
-    await supabase.auth.signOut()
+  const logout = useCallback(() => {
     setUser(null)
+    localStorage.removeItem(SESSION_KEY)
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading: false }}>
       {children}
     </AuthContext.Provider>
   )

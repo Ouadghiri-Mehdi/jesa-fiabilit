@@ -1,7 +1,5 @@
 // src/hooks/useTUM.js
-import { useState, useCallback, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
-import { useAuth } from '../auth/AuthContext'
+import { useState, useCallback } from 'react'
 import { DEFAULT_SEUILS } from '../data/seuils'
 import { EQUIPMENT_LIST as INITIAL_EQUIPMENT_LIST } from '../data/equipements'
 
@@ -37,61 +35,39 @@ export function getPourcentage(cumul, seuilCumul) {
   return Math.min(100, (cumul / seuilCumul) * 100)
 }
 
-function rowToArret(row) {
-  return {
-    id:          row.id,
-    equipId:     row.equip_id,
-    designation: row.designation || '',
-    zone:        row.zone || '',
-    startTime:   row.start_time,
-    duration:    row.duration,
-    cause:       row.cause || '',
-  }
+// ─── Clés localStorage ──────────────────────────────────────────────────────
+
+const LS_ARRETS = 'jesa_arrets'
+const LS_SEUILS = 'jesa_seuils'
+const LS_EQUIP  = 'jesa_equipment_list'
+
+function readArrets() {
+  try { return JSON.parse(localStorage.getItem(LS_ARRETS) || '[]') } catch { return [] }
 }
 
-function rowToSeuils(row) {
-  if (!row) return DEFAULT_SEUILS
-  return {
-    n1: { cumul: row.n1_cumul, frequence: row.n1_frequence, horizon: row.n1_horizon },
-    n2: { cumul: row.n2_cumul, frequence: row.n2_frequence, horizon: row.n2_horizon },
-  }
+function readSeuils() {
+  try {
+    const raw = localStorage.getItem(LS_SEUILS)
+    return raw ? JSON.parse(raw) : DEFAULT_SEUILS
+  } catch { return DEFAULT_SEUILS }
+}
+
+function readEquipList() {
+  try {
+    const stored = localStorage.getItem(LS_EQUIP)
+    return stored ? JSON.parse(stored) : INITIAL_EQUIPMENT_LIST
+  } catch { return INITIAL_EQUIPMENT_LIST }
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
 
 export default function useTUM() {
-  const { user } = useAuth()
-  const [arrets,        setArrets]        = useState([])
-  const [seuils,        setSeuils]        = useState(DEFAULT_SEUILS)
-  const [seuilsId,      setSeuilsId]      = useState(null)
-  const [equipmentList, setEquipmentList] = useState(INITIAL_EQUIPMENT_LIST)
-  const [loading,       setLoading]       = useState(true)
+  const [arrets,        setArrets]        = useState(readArrets)
+  const [seuils,        setSeuils]        = useState(readSeuils)
+  const [equipmentList, setEquipmentList] = useState(readEquipList)
 
-  useEffect(() => {
-    if (!user?.id) return
-    let cancelled = false
-
-    async function load() {
-      setLoading(true)
-      const [arretsRes, seuilsRes] = await Promise.all([
-        supabase.from('arrets').select('*').order('start_time', { ascending: false }),
-        supabase.from('seuils').select('*').single(),
-      ])
-      if (cancelled) return
-      if (arretsRes.data)  setArrets(arretsRes.data.map(rowToArret))
-      if (seuilsRes.data) {
-        setSeuils(rowToSeuils(seuilsRes.data))
-        setSeuilsId(seuilsRes.data.id)
-      }
-      setLoading(false)
-    }
-
-    load()
-    return () => { cancelled = true }
-  }, [user?.id])
-
-  const knownEquipIds = equipmentList.map(e => e.id)
   const equipIds      = [...new Set(arrets.map(a => a.equipId))]
+  const knownEquipIds = equipmentList.map(e => e.id)
 
   const alertEquips = equipIds.filter(id => {
     const cumulN2 = calcCumul(arrets, id, seuils.n2.horizon)
@@ -102,47 +78,35 @@ export default function useTUM() {
     return getStatut(cumulN1, freqN1, seuils) === 'watch'
   })
 
-  const ajouterArrets = useCallback(async (nouveaux) => {
-    if (!user?.siteId) return []
-    const rows = nouveaux.map(a => ({
-      equip_id:    a.equipId,
-      site_id:     user.siteId,
-      start_time:  a.startTime,
-      duration:    a.duration || 0,
-      cause:       a.cause    || null,
-      zone:        a.zone     || null,
-      designation: a.designation || null,
-      created_by:  user.id,
+  const ajouterArrets = useCallback((nouveaux) => {
+    const withIds = nouveaux.map(a => ({
+      ...a,
+      id: a.id || `arr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     }))
-    const { data, error } = await supabase.from('arrets').insert(rows).select()
-    if (!error && data) {
-      const inserted = data.map(rowToArret)
-      setArrets(prev => [...inserted, ...prev])
-      return inserted
-    }
-    return []
-  }, [user])
-
-  const supprimerArret = useCallback(async (id) => {
-    await supabase.from('arrets').delete().eq('id', id)
-    setArrets(prev => prev.filter(a => a.id !== id))
+    setArrets(prev => {
+      const next = [...withIds, ...prev]
+      localStorage.setItem(LS_ARRETS, JSON.stringify(next))
+      return next
+    })
+    return withIds
   }, [])
 
-  const sauvegarderSeuils = useCallback(async (nouveauxSeuils) => {
+  const supprimerArret = useCallback((id) => {
+    setArrets(prev => {
+      const next = prev.filter(a => a.id !== id)
+      localStorage.setItem(LS_ARRETS, JSON.stringify(next))
+      return next
+    })
+  }, [])
+
+  const sauvegarderSeuils = useCallback((nouveauxSeuils) => {
     setSeuils(nouveauxSeuils)
-    if (!seuilsId) return
-    await supabase.from('seuils').update({
-      n1_cumul:     nouveauxSeuils.n1.cumul,
-      n1_frequence: nouveauxSeuils.n1.frequence,
-      n1_horizon:   nouveauxSeuils.n1.horizon,
-      n2_cumul:     nouveauxSeuils.n2.cumul,
-      n2_frequence: nouveauxSeuils.n2.frequence,
-      n2_horizon:   nouveauxSeuils.n2.horizon,
-    }).eq('id', seuilsId)
-  }, [seuilsId])
+    localStorage.setItem(LS_SEUILS, JSON.stringify(nouveauxSeuils))
+  }, [])
 
   const updateEquipmentList = useCallback((list) => {
     setEquipmentList(list)
+    localStorage.setItem(LS_EQUIP, JSON.stringify(list))
   }, [])
 
   return {
@@ -152,7 +116,7 @@ export default function useTUM() {
     equipmentList,
     knownEquipIds,
     alertEquips,
-    loading,
+    loading: false,
     ajouterArrets,
     supprimerArret,
     sauvegarderSeuils,
