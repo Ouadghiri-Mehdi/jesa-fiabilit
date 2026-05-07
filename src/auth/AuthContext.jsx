@@ -102,8 +102,14 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = useCallback(async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return !error
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) console.error('Login error:', error.message)
+      return !error
+    } catch (e) {
+      console.error('Login exception:', e)
+      return false
+    }
   }, [])
 
   const logout = useCallback(async () => {
