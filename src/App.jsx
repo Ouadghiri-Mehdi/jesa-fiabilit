@@ -12,7 +12,8 @@ import HistoriquePage from './components/historique/HistoriquePage'
 import DashboardPage from './components/dashboard/DashboardPage'
 
 function PrivateRoute({ children }) {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
+  if (loading) return <div style={{ minHeight: '100vh', background: '#0b2e63' }} />
   if (!user) return <Navigate to="/login" replace />
   return children
 }

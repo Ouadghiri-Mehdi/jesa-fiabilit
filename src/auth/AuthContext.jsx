@@ -1,10 +1,9 @@
 // src/auth/AuthContext.jsx
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
-const USERS = {
-  mehdi:   { password: '123', site: 'Rabat',      siteKey: 'rabat' },
-  chaimae: { password: '123', site: 'Jorf Lasfar', siteKey: 'jorf'  },
-}
+// Site keys connus pour les vues cross-site (localStorage — sera migré vers Supabase)
+const SITE_KEYS = ['rabat', 'jorf', 'casa', 'khb']
 
 const DATA_KEYS = [
   'jesa_arrets',
@@ -14,83 +13,45 @@ const DATA_KEYS = [
   'jesa_participants_list',
 ]
 
-function saveUserData(siteKey) {
-  DATA_KEYS.forEach(key => {
-    const val = localStorage.getItem(key)
-    if (val !== null) {
-      localStorage.setItem(`${key}_${siteKey}`, val)
-    }
-  })
-}
-
-function loadUserData(siteKey) {
-  DATA_KEYS.forEach(key => {
-    const val = localStorage.getItem(`${key}_${siteKey}`)
-    if (val !== null) {
-      localStorage.setItem(key, val)
-    } else {
-      localStorage.removeItem(key)
-    }
-  })
-}
-
-// Sync live standard key → site-specific key so reads are always fresh.
 function syncCurrentUserSessions(currentSiteKey) {
   if (!currentSiteKey) return
   const live = localStorage.getItem('jesa_rca_sessions')
-  if (live !== null) {
-    localStorage.setItem(`jesa_rca_sessions_${currentSiteKey}`, live)
-  }
-}
-
-// Same but for ALL data keys (used before switching users).
-function syncAllCurrentUserData(currentSiteKey) {
-  if (!currentSiteKey) return
-  DATA_KEYS.forEach(key => {
-    const val = localStorage.getItem(key)
-    if (val !== null) {
-      localStorage.setItem(`${key}_${currentSiteKey}`, val)
-    }
-  })
+  if (live !== null) localStorage.setItem(`jesa_rca_sessions_${currentSiteKey}`, live)
 }
 
 export function getAllClosedRCAs(currentSiteKey) {
   syncCurrentUserSessions(currentSiteKey)
   const result = []
-  Object.values(USERS).forEach(({ siteKey, site }) => {
+  SITE_KEYS.forEach(siteKey => {
     try {
       const raw = localStorage.getItem(`jesa_rca_sessions_${siteKey}`)
       if (!raw) return
-      const sessions = JSON.parse(raw)
-      sessions
+      JSON.parse(raw)
         .filter(s => s.statut === 'cloturee')
-        .forEach(s => result.push({ ...s, _site: site, _siteKey: siteKey }))
+        .forEach(s => result.push({ ...s, _siteKey: siteKey }))
     } catch {}
   })
   return result
 }
 
-function getOtherSiteKey(siteKey) {
-  return Object.values(USERS).find(u => u.siteKey !== siteKey)?.siteKey || null
-}
-
 export function getNewClosedRCAsCount(currentSiteKey) {
   syncCurrentUserSessions(currentSiteKey)
-  const otherKey = getOtherSiteKey(currentSiteKey)
-  if (!otherKey) return 0
-  try {
-    const raw = localStorage.getItem(`jesa_rca_sessions_${otherKey}`)
-    if (!raw) return 0
-    const sessions = JSON.parse(raw)
-    const closed = sessions.filter(s => s.statut === 'cloturee')
-    const seenTs = parseInt(localStorage.getItem(`jesa_notif_seen_${currentSiteKey}`) || '0', 10)
-    return closed.filter(s => {
-      const ts = s.dateHeureFin ? new Date(s.dateHeureFin).getTime() : 0
-      return ts > seenTs
-    }).length
-  } catch {
-    return 0
-  }
+  const result = []
+  SITE_KEYS.filter(k => k !== currentSiteKey).forEach(siteKey => {
+    try {
+      const raw = localStorage.getItem(`jesa_rca_sessions_${siteKey}`)
+      if (!raw) return
+      const seenTs = parseInt(localStorage.getItem(`jesa_notif_seen_${currentSiteKey}`) || '0', 10)
+      JSON.parse(raw)
+        .filter(s => s.statut === 'cloturee')
+        .filter(s => {
+          const ts = s.dateHeureFin ? new Date(s.dateHeureFin).getTime() : 0
+          return ts > seenTs
+        })
+        .forEach(s => result.push(s))
+    } catch {}
+  })
+  return result.length
 }
 
 export function markNotifSeen(currentSiteKey) {
@@ -99,57 +60,59 @@ export function markNotifSeen(currentSiteKey) {
 
 const AuthContext = createContext(null)
 
+async function fetchProfile(userId) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('nom, prenom, role, site_id, sites(nom, code)')
+    .eq('id', userId)
+    .single()
+  return {
+    site:    data?.sites?.nom  || '',
+    siteKey: (data?.sites?.code || '').toLowerCase(),
+    role:    data?.role         || 'user',
+    nom:     data?.nom          || '',
+    prenom:  data?.prenom       || '',
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const stored = sessionStorage.getItem('jesa_auth_user')
-      return stored ? JSON.parse(stored) : null
-    } catch {
-      return null
-    }
-  })
+  const [user, setUser]       = useState(null)
+  const [loading, setLoading] = useState(true)
 
-  // Save data when the tab/page closes so no work is lost.
   useEffect(() => {
-    if (!user) return
-    const handler = () => saveUserData(user.siteKey)
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
-  }, [user])
-
-  const login = useCallback((username, password) => {
-    const cfg = USERS[username.toLowerCase()]
-    if (!cfg || cfg.password !== password) return false
-
-    // Retrieve current user from sessionStorage (may differ from React state
-    // if another tab updated it) and save their live data first.
-    try {
-      const stored = sessionStorage.getItem('jesa_auth_user')
-      if (stored) {
-        const current = JSON.parse(stored)
-        if (current.siteKey && current.siteKey !== cfg.siteKey) {
-          syncAllCurrentUserData(current.siteKey)
-        }
+    // Restaurer la session existante
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        const profile = await fetchProfile(session.user.id)
+        setUser({ id: session.user.id, email: session.user.email, ...profile })
       }
-    } catch {}
+      setLoading(false)
+    })
 
-    const userData = { username: username.toLowerCase(), site: cfg.site, siteKey: cfg.siteKey }
-    loadUserData(cfg.siteKey)
-    sessionStorage.setItem('jesa_auth_user', JSON.stringify(userData))
-    setUser(userData)
-    return true
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        const profile = await fetchProfile(session.user.id)
+        setUser({ id: session.user.id, email: session.user.email, ...profile })
+      } else {
+        setUser(null)
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
-  const logout = useCallback(() => {
-    if (user) {
-      saveUserData(user.siteKey)
-      sessionStorage.removeItem('jesa_auth_user')
-      setUser(null)
-    }
-  }, [user])
+  const login = useCallback(async (email, password) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    return !error
+  }, [])
+
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut()
+    setUser(null)
+  }, [])
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   )
