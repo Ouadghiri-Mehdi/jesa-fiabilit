@@ -1,7 +1,7 @@
 // src/hooks/useTUM.js
 import { useState, useCallback, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../auth/AuthContext'
-import { api } from '../lib/api'
 import { DEFAULT_SEUILS } from '../data/seuils'
 import { EQUIPMENT_LIST as INITIAL_EQUIPMENT_LIST } from '../data/equipements'
 
@@ -37,7 +37,6 @@ export function getPourcentage(cumul, seuilCumul) {
   return Math.min(100, (cumul / seuilCumul) * 100)
 }
 
-// Convertit une ligne API → format app
 function rowToArret(row) {
   return {
     id:          row.id,
@@ -50,7 +49,6 @@ function rowToArret(row) {
   }
 }
 
-// Convertit seuils API → format app
 function rowToSeuils(row) {
   if (!row) return DEFAULT_SEUILS
   return {
@@ -65,29 +63,27 @@ export default function useTUM() {
   const { user } = useAuth()
   const [arrets,        setArrets]        = useState([])
   const [seuils,        setSeuils]        = useState(DEFAULT_SEUILS)
+  const [seuilsId,      setSeuilsId]      = useState(null)
   const [equipmentList, setEquipmentList] = useState(INITIAL_EQUIPMENT_LIST)
   const [loading,       setLoading]       = useState(true)
 
-  // Charger arrêts + seuils depuis l'API
   useEffect(() => {
     if (!user?.id) return
     let cancelled = false
 
     async function load() {
       setLoading(true)
-      try {
-        const [arretsData, seuilsData] = await Promise.all([
-          api.get('/api/tum/arrets'),
-          api.get('/api/tum/seuils'),
-        ])
-        if (cancelled) return
-        if (Array.isArray(arretsData)) setArrets(arretsData.map(rowToArret))
-        if (seuilsData) setSeuils(rowToSeuils(seuilsData))
-      } catch (e) {
-        console.error('useTUM load error:', e.message)
-      } finally {
-        if (!cancelled) setLoading(false)
+      const [arretsRes, seuilsRes] = await Promise.all([
+        supabase.from('arrets').select('*').order('start_time', { ascending: false }),
+        supabase.from('seuils').select('*').single(),
+      ])
+      if (cancelled) return
+      if (arretsRes.data)  setArrets(arretsRes.data.map(rowToArret))
+      if (seuilsRes.data) {
+        setSeuils(rowToSeuils(seuilsRes.data))
+        setSeuilsId(seuilsRes.data.id)
       }
+      setLoading(false)
     }
 
     load()
@@ -106,49 +102,44 @@ export default function useTUM() {
     return getStatut(cumulN1, freqN1, seuils) === 'watch'
   })
 
-  // Ajouter arrêts (import Excel ou saisie manuelle)
   const ajouterArrets = useCallback(async (nouveaux) => {
-    if (!user?.id) return
+    if (!user?.siteId) return []
     const rows = nouveaux.map(a => ({
-      equip_id:   a.equipId,
-      start_time: a.startTime,
-      duration:   a.duration || 0,
-      cause:      a.cause    || null,
-      zone:       a.zone     || null,
+      equip_id:    a.equipId,
+      site_id:     user.siteId,
+      start_time:  a.startTime,
+      duration:    a.duration || 0,
+      cause:       a.cause    || null,
+      zone:        a.zone     || null,
       designation: a.designation || null,
+      created_by:  user.id,
     }))
-    try {
-      const data = await api.post('/api/tum/arrets', rows)
-      if (Array.isArray(data)) setArrets(prev => [...data.map(rowToArret), ...prev])
-    } catch (e) {
-      console.error('ajouterArrets error:', e.message)
+    const { data, error } = await supabase.from('arrets').insert(rows).select()
+    if (!error && data) {
+      const inserted = data.map(rowToArret)
+      setArrets(prev => [...inserted, ...prev])
+      return inserted
     }
+    return []
   }, [user])
 
   const supprimerArret = useCallback(async (id) => {
-    try {
-      await api.delete(`/api/tum/arrets/${id}`)
-      setArrets(prev => prev.filter(a => a.id !== id))
-    } catch (e) {
-      console.error('supprimerArret error:', e.message)
-    }
+    await supabase.from('arrets').delete().eq('id', id)
+    setArrets(prev => prev.filter(a => a.id !== id))
   }, [])
 
   const sauvegarderSeuils = useCallback(async (nouveauxSeuils) => {
     setSeuils(nouveauxSeuils)
-    try {
-      await api.put('/api/tum/seuils', {
-        n1_cumul:     nouveauxSeuils.n1.cumul,
-        n1_frequence: nouveauxSeuils.n1.frequence,
-        n1_horizon:   nouveauxSeuils.n1.horizon,
-        n2_cumul:     nouveauxSeuils.n2.cumul,
-        n2_frequence: nouveauxSeuils.n2.frequence,
-        n2_horizon:   nouveauxSeuils.n2.horizon,
-      })
-    } catch (e) {
-      console.error('sauvegarderSeuils error:', e.message)
-    }
-  }, [])
+    if (!seuilsId) return
+    await supabase.from('seuils').update({
+      n1_cumul:     nouveauxSeuils.n1.cumul,
+      n1_frequence: nouveauxSeuils.n1.frequence,
+      n1_horizon:   nouveauxSeuils.n1.horizon,
+      n2_cumul:     nouveauxSeuils.n2.cumul,
+      n2_frequence: nouveauxSeuils.n2.frequence,
+      n2_horizon:   nouveauxSeuils.n2.horizon,
+    }).eq('id', seuilsId)
+  }, [seuilsId])
 
   const updateEquipmentList = useCallback((list) => {
     setEquipmentList(list)

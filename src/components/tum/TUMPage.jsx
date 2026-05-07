@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import C from '../../tokens/colors'
+import { calcCumul, calcFrequence, getStatut } from '../../hooks/useTUM'
 import { useTUMContext } from '../layout/Layout'
 import useNotifs from '../../hooks/useNotifs'
 import AlertBanner from '../shared/AlertBanner'
@@ -10,10 +11,78 @@ import ImportExcel from './ImportExcel'
 import SaisieManuelle from './SaisieManuelle'
 import BadActors from './BadActors'
 import SeuilsModal from './SeuilsModal'
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../auth/AuthContext'
+
+async function syncAlertsToRCA(allArrets, nouveaux, seuils, siteId, userId) {
+  if (!siteId || !userId || !nouveaux.length) return
+
+  const affectedIds = [...new Set(nouveaux.map(a => a.equipId))]
+
+  const { data: sessions } = await supabase
+    .from('rca_sessions')
+    .select('id, equip_id, cause_arret, statut')
+    .eq('site_id', siteId)
+    .neq('statut', 'cloturee')
+
+  const activeByEquip = {}
+  for (const s of sessions || []) activeByEquip[s.equip_id] = s
+
+  for (const equipId of affectedIds) {
+    const trigger = nouveaux.find(a => a.equipId === equipId)
+      || allArrets.filter(a => a.equipId === equipId).slice(-1)[0]
+
+    // Mettre à jour cause si session existe déjà
+    if (activeByEquip[equipId]) {
+      const s = activeByEquip[equipId]
+      if (!s.cause_arret && trigger?.cause) {
+        await supabase.from('rca_sessions')
+          .update({ cause_arret: trigger.cause })
+          .eq('id', s.id)
+      }
+      continue
+    }
+
+    const cumulN2 = calcCumul(allArrets, equipId, seuils.n2.horizon)
+    const freqN2  = calcFrequence(allArrets, equipId, seuils.n2.horizon)
+    const isAlert = getStatut(cumulN2, freqN2, seuils) === 'alert'
+    const cumulN1 = calcCumul(allArrets, equipId, seuils.n1.horizon)
+    const freqN1  = calcFrequence(allArrets, equipId, seuils.n1.horizon)
+    const isWatch = getStatut(cumulN1, freqN1, seuils) === 'watch'
+    if (!isAlert && !isWatch) continue
+
+    const niveau = isAlert ? 2 : 1
+    const today  = new Date().toISOString().slice(0, 10)
+    const ts     = Date.now()
+    const id     = `RCA-${today.replace(/-/g, '')}-${(ts % 900) + 100}`
+
+    await supabase.from('rca_sessions').insert({
+      id,
+      equip_id:       equipId,
+      titre:          equipId,
+      zone:           trigger?.zone || '',
+      date_ouverture: today,
+      niveau,
+      source:         'TUM',
+      statut:         'non-commencee',
+      methode:        niveau === 2 ? '5why' : 'kaizen',
+      phenomene:      trigger?.cause || '',
+      cause_arret:    trigger?.cause || '',
+      cumul_arret:    isAlert ? cumulN2 : cumulN1,
+      frequence:      isAlert ? freqN2  : freqN1,
+      participants:   [],
+      noeuds:         [],
+      actions_generees: [],
+      site_id:        siteId,
+      created_by:     userId,
+    })
+  }
+}
 
 export default function TUMPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user } = useAuth()
   const { notifs, showNotif, dismissNotif } = useNotifs()
   const {
     arrets, seuils, alertEquips,
@@ -21,11 +90,9 @@ export default function TUMPage() {
     ajouterArrets, sauvegarderSeuils,
   } = useTUMContext()
 
-  const [activeView, setActiveView] = useState('data')
-  const [showSaisieInline, setShowSaisieInline] = useState(false)
-  const [showSeuils, setShowSeuils] = useState(false)
-
-  // État pour la vue dans Bad Actors
+  const [activeView,        setActiveView]        = useState('data')
+  const [showSaisieInline,  setShowSaisieInline]  = useState(false)
+  const [showSeuils,        setShowSeuils]        = useState(false)
   const [badActorsViewMode, setBadActorsViewMode] = useState('pareto')
 
   useEffect(() => {
@@ -45,13 +112,17 @@ export default function TUMPage() {
     navigate('/tum', { replace: true })
   }
 
-  const handleImport = (nouveaux) => {
-    ajouterArrets(nouveaux)
+  const handleImport = async (nouveaux) => {
+    const inserted = await ajouterArrets(nouveaux)
+    const allArrets = [...arrets, ...(inserted.length ? inserted : nouveaux)]
+    syncAlertsToRCA(allArrets, inserted.length ? inserted : nouveaux, seuils, user?.siteId, user?.id)
     showNotif('✅ Import réussi', `${nouveaux.length} arrêt(s) importé(s) dans le TUM`, 'green')
   }
 
-  const handleSaisie = (arret) => {
-    ajouterArrets([arret])
+  const handleSaisie = async (arret) => {
+    const inserted = await ajouterArrets([arret])
+    const allArrets = [...arrets, ...(inserted.length ? inserted : [arret])]
+    syncAlertsToRCA(allArrets, inserted.length ? inserted : [arret], seuils, user?.siteId, user?.id)
     showNotif('✅ Arrêt enregistré', `${arret.equipId} · ${arret.duration}h archivé`, 'blue')
     setShowSaisieInline(false)
   }
@@ -125,25 +196,18 @@ export default function TUMPage() {
             </div>
           )}
 
-          <ImportExcel
-            onImport={handleImport}
-            showNotif={showNotif}
-          />
+          <ImportExcel onImport={handleImport} showNotif={showNotif} />
 
           {!showSaisieInline && (
             <div style={{ marginTop: 4, marginBottom: 16, display: 'flex', justifyContent: 'center' }}>
               <button
                 onClick={() => setShowSaisieInline(true)}
                 style={{
-                  background: '#f1f5f9',
-                  border: `1.5px solid ${C.border2}`,
-                  borderRadius: 999,
-                  padding: '12px 36px',
-                  color: C.text2,
-                  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  background: '#f1f5f9', border: `1.5px solid ${C.border2}`,
+                  borderRadius: 999, padding: '12px 36px',
+                  color: C.text2, fontSize: 14, fontWeight: 600, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  transition: 'all .2s',
-                  fontFamily: "'DM Sans', sans-serif",
+                  transition: 'all .2s', fontFamily: "'DM Sans', sans-serif",
                 }}
                 onMouseEnter={e => {
                   e.currentTarget.style.background = C.navy
