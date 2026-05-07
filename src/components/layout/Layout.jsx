@@ -6,16 +6,22 @@ import Topbar from './Topbar'
 import Notif from '../shared/Notif'
 import ChatbotFAB from '../shared/ChatbotFAB'
 import useNotifs from '../../hooks/useNotifs'
+import useTUM from '../../hooks/useTUM'
 
 // NotifContext — partagé à tous les enfants via Context
 import { createContext, useContext } from 'react'
 export const NotifContext = createContext(null)
 export const useNotifContext = () => useContext(NotifContext)
 
+// TUMContext — données TUM persistantes pendant toute la session
+export const TUMContext = createContext(null)
+export const useTUMContext = () => useContext(TUMContext)
+
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const { notifs, showNotif, dismissNotif } = useNotifs()
   const { pathname } = useLocation()
+  const tumData = useTUM()
 
   // Chatbot visible partout SAUF sur les pages RCA
   const showChatbot = !pathname.startsWith('/rca')
@@ -23,6 +29,7 @@ export default function Layout() {
   const SB_W = collapsed ? 60 : 236
 
   return (
+    <TUMContext.Provider value={tumData}>
     <NotifContext.Provider value={showNotif}>
       <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc' }}>
 
@@ -49,5 +56,6 @@ export default function Layout() {
 
       </div>
     </NotifContext.Provider>
+    </TUMContext.Provider>
   )
 }

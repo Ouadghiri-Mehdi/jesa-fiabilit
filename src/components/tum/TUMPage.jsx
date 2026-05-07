@@ -2,7 +2,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import C from '../../tokens/colors'
-import useTUM, { calcCumul, calcFrequence, getStatut } from '../../hooks/useTUM'
+import { calcCumul, calcFrequence, getStatut } from '../../hooks/useTUM'
+import { useTUMContext } from '../layout/Layout'
 import useNotifs from '../../hooks/useNotifs'
 import AlertBanner from '../shared/AlertBanner'
 import Notif from '../shared/Notif'
@@ -76,7 +77,7 @@ export default function TUMPage() {
     arrets, seuils, alertEquips,
     equipmentList, knownEquipIds, updateEquipmentList,
     ajouterArrets, sauvegarderSeuils,
-  } = useTUM()
+  } = useTUMContext()
 
   const [activeView, setActiveView] = useState('data')
   const [showSaisieInline, setShowSaisieInline] = useState(false)
