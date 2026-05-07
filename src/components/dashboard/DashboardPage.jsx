@@ -668,7 +668,7 @@ export default function DashboardPage() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={loadFromStorage} style={{
+          <button onClick={() => window.location.reload()} style={{
             padding: '6px 12px', borderRadius: 8, border: `1px solid ${C.border}`,
             background: '#fff', cursor: 'pointer', fontSize: 12, color: C.text3,
             fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 5,

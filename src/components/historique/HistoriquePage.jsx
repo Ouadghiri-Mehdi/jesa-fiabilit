@@ -20,11 +20,6 @@ const STATUT_ACT = {
 const th = { padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748b', letterSpacing: '1px', textTransform: 'uppercase', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap', background: '#f8fafc' }
 const td = { padding: '11px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#334155' }
 
-function readLS(key, fallback) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback }
-  catch { return fallback }
-}
-
 function ProgressBar({ value, statut }) {
   const color = statut === 'cloturee' ? '#059669' : statut === 'retard' ? '#dc2626' : '#d97706'
   return (
@@ -197,7 +192,7 @@ function DossierEquip({ equip, onBack, arrets, allRcaSessions }) {
                 ) : arretsEquip.map((a, i) => (
                   <tr key={i} onMouseOver={e => e.currentTarget.style.background = '#f8fafc'} onMouseOut={e => e.currentTarget.style.background = ''}>
                     <td style={td}>{new Date(a.startTime).toLocaleDateString('fr-FR')} {new Date(a.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
-                    <td style={td}>{a.endTime ? `${new Date(a.endTime).toLocaleDateString('fr-FR')} ${new Date(a.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : '—'}</td>
+                    <td style={td}>{a.startTime && a.duration ? (() => { const d = new Date(new Date(a.startTime).getTime() + a.duration * 3600000); return `${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` })() : '—'}</td>
                     <td style={{ ...td, fontWeight: 700, color: '#dc2626' }}>{a.duration?.toFixed(1)}h</td>
                     <td style={td}>{a.zone || '—'}</td>
                     <td style={td}>{a.cause || '—'}</td>

@@ -12,15 +12,6 @@ const STATUT_CFG = {
   'cloturee':     { label: 'Clôturé',      bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' },
 }
 
-function readLS(key, fallback) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback }
-  catch { return fallback }
-}
-
-function saveLS(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
-}
-
 function RetardBadge({ delai, statut }) {
   if (statut === 'cloturee' || statut === 'cloture') return <span style={{ fontSize: 11.5, color: '#059669', fontWeight: 600 }}>✓ Clôturée</span>
   if (!delai) return <span style={{ color: '#94a3b8' }}>—</span>
