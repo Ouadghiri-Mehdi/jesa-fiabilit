@@ -33,8 +33,8 @@ const labelStyle = {
 
 // ── Valeurs par défaut des seuils (N1 et N2)
 const DEFAULT_SEUILS_VALUES = {
-  n1: { cumul: 8,  frequence: 3, horizon: 30 },
-  n2: { cumul: 24, frequence: 5, horizon: 90 },
+  n1: { cumul: 2, frequence: 2, horizon: 30 },
+  n2: { cumul: 4, frequence: 3, horizon: 90 },
 }
 
 // ── Liste par défaut des causes d'arrêt
