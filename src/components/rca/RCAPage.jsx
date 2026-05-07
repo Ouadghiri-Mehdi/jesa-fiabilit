@@ -7,7 +7,7 @@ import RCADetail from './RCADetail'
 import NewRCAModal from './NewRCAModal'
 import useNotifs from '../../hooks/useNotifs'
 import { getParticipants } from '../../data/participants'
-import useRCASessions from '../../hooks/useRCASessions'
+import { useRCAContext } from '../layout/Layout'
 
 // ─── Popup choix participants (utilisé pour le flow TUM → RCA) ───────────────
 function ChoixParticipantsPopup({ session, onChoisir, onClose }) {
@@ -203,7 +203,7 @@ export default function RCAPage() {
   const equipIdFromTUM = !isRcaId ? paramId : null
 
   // ── Sessions Supabase ────────────────────────────────────────────────────────
-  const { sessions, setSessions, loading, createSession, updateSession } = useRCASessions()
+  const { sessions, setSessions, loading, createSession, updateSession } = useRCAContext()
 
   // ── États UI ─────────────────────────────────────────────────────────────────
   const [selected, setSelected]               = useState(null)
