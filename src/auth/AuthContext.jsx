@@ -1,56 +1,96 @@
 // src/auth/AuthContext.jsx
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 
-const SITE_KEYS = ['rabat', 'jorf', 'casa', 'khb']
+const USERS = {
+  mehdi:   { password: '123', site: 'Rabat',      siteKey: 'rabat' },
+  chaimae: { password: '123', site: 'Jorf Lasfar', siteKey: 'jorf'  },
+}
 
-const LOCAL_USERS = [
-  { email: 'mehdi@jesa.ma',     password: 'Jesa2025!', site: 'Rabat',        siteKey: 'rabat', role: 'admin', nom: 'Ouadghiri', prenom: 'Mehdi' },
-  { email: 'chaimae@jesa.ma',   password: 'Jesa2025!', site: 'Jorf Lasfar',  siteKey: 'jorf',  role: 'user',  nom: 'User',      prenom: 'Chaimae' },
-  { email: 'casa@jesa.ma',      password: 'Jesa2025!', site: 'Casablanca',   siteKey: 'casa',  role: 'user',  nom: 'User',      prenom: 'Casa' },
-  { email: 'kherbiga@jesa.ma',  password: 'Jesa2025!', site: 'Khouribga',    siteKey: 'khb',   role: 'user',  nom: 'User',      prenom: 'Kherbiga' },
+const DATA_KEYS = [
+  'jesa_arrets',
+  'jesa_seuils',
+  'jesa_equipment_list',
+  'jesa_rca_sessions',
+  'jesa_participants_list',
 ]
 
-const SESSION_KEY = 'jesa_session'
+function saveUserData(siteKey) {
+  DATA_KEYS.forEach(key => {
+    const val = localStorage.getItem(key)
+    if (val !== null) {
+      localStorage.setItem(`${key}_${siteKey}`, val)
+    }
+  })
+}
 
+function loadUserData(siteKey) {
+  DATA_KEYS.forEach(key => {
+    const val = localStorage.getItem(`${key}_${siteKey}`)
+    if (val !== null) {
+      localStorage.setItem(key, val)
+    } else {
+      localStorage.removeItem(key)
+    }
+  })
+}
+
+// Sync live standard key → site-specific key so reads are always fresh.
 function syncCurrentUserSessions(currentSiteKey) {
   if (!currentSiteKey) return
   const live = localStorage.getItem('jesa_rca_sessions')
-  if (live !== null) localStorage.setItem(`jesa_rca_sessions_${currentSiteKey}`, live)
+  if (live !== null) {
+    localStorage.setItem(`jesa_rca_sessions_${currentSiteKey}`, live)
+  }
+}
+
+// Same but for ALL data keys (used before switching users).
+function syncAllCurrentUserData(currentSiteKey) {
+  if (!currentSiteKey) return
+  DATA_KEYS.forEach(key => {
+    const val = localStorage.getItem(key)
+    if (val !== null) {
+      localStorage.setItem(`${key}_${currentSiteKey}`, val)
+    }
+  })
 }
 
 export function getAllClosedRCAs(currentSiteKey) {
   syncCurrentUserSessions(currentSiteKey)
   const result = []
-  SITE_KEYS.forEach(siteKey => {
+  Object.values(USERS).forEach(({ siteKey, site }) => {
     try {
       const raw = localStorage.getItem(`jesa_rca_sessions_${siteKey}`)
       if (!raw) return
-      JSON.parse(raw)
+      const sessions = JSON.parse(raw)
+      sessions
         .filter(s => s.statut === 'cloturee')
-        .forEach(s => result.push({ ...s, _siteKey: siteKey }))
+        .forEach(s => result.push({ ...s, _site: site, _siteKey: siteKey }))
     } catch {}
   })
   return result
 }
 
+function getOtherSiteKey(siteKey) {
+  return Object.values(USERS).find(u => u.siteKey !== siteKey)?.siteKey || null
+}
+
 export function getNewClosedRCAsCount(currentSiteKey) {
   syncCurrentUserSessions(currentSiteKey)
-  const result = []
-  SITE_KEYS.filter(k => k !== currentSiteKey).forEach(siteKey => {
-    try {
-      const raw = localStorage.getItem(`jesa_rca_sessions_${siteKey}`)
-      if (!raw) return
-      const seenTs = parseInt(localStorage.getItem(`jesa_notif_seen_${currentSiteKey}`) || '0', 10)
-      JSON.parse(raw)
-        .filter(s => s.statut === 'cloturee')
-        .filter(s => {
-          const ts = s.dateHeureFin ? new Date(s.dateHeureFin).getTime() : 0
-          return ts > seenTs
-        })
-        .forEach(s => result.push(s))
-    } catch {}
-  })
-  return result.length
+  const otherKey = getOtherSiteKey(currentSiteKey)
+  if (!otherKey) return 0
+  try {
+    const raw = localStorage.getItem(`jesa_rca_sessions_${otherKey}`)
+    if (!raw) return 0
+    const sessions = JSON.parse(raw)
+    const closed = sessions.filter(s => s.statut === 'cloturee')
+    const seenTs = parseInt(localStorage.getItem(`jesa_notif_seen_${currentSiteKey}`) || '0', 10)
+    return closed.filter(s => {
+      const ts = s.dateHeureFin ? new Date(s.dateHeureFin).getTime() : 0
+      return ts > seenTs
+    }).length
+  } catch {
+    return 0
+  }
 }
 
 export function markNotifSeen(currentSiteKey) {
@@ -62,38 +102,54 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     try {
-      const stored = localStorage.getItem(SESSION_KEY)
+      const stored = sessionStorage.getItem('jesa_auth_user')
       return stored ? JSON.parse(stored) : null
-    } catch { return null }
+    } catch {
+      return null
+    }
   })
 
-  const login = useCallback((email, password) => {
-    const found = LOCAL_USERS.find(
-      u => u.email === email.trim().toLowerCase() && u.password === password
-    )
-    if (!found) return false
-    const u = {
-      id:       found.siteKey,
-      email:    found.email,
-      site:     found.site,
-      siteKey:  found.siteKey,
-      role:     found.role,
-      nom:      found.nom,
-      prenom:   found.prenom,
-      username: `${found.prenom} ${found.nom}`,
-    }
-    setUser(u)
-    localStorage.setItem(SESSION_KEY, JSON.stringify(u))
+  // Save data when the tab/page closes so no work is lost.
+  useEffect(() => {
+    if (!user) return
+    const handler = () => saveUserData(user.siteKey)
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [user])
+
+  const login = useCallback((username, password) => {
+    const cfg = USERS[username.toLowerCase()]
+    if (!cfg || cfg.password !== password) return false
+
+    // Retrieve current user from sessionStorage (may differ from React state
+    // if another tab updated it) and save their live data first.
+    try {
+      const stored = sessionStorage.getItem('jesa_auth_user')
+      if (stored) {
+        const current = JSON.parse(stored)
+        if (current.siteKey && current.siteKey !== cfg.siteKey) {
+          syncAllCurrentUserData(current.siteKey)
+        }
+      }
+    } catch {}
+
+    const userData = { username: username.toLowerCase(), site: cfg.site, siteKey: cfg.siteKey }
+    loadUserData(cfg.siteKey)
+    sessionStorage.setItem('jesa_auth_user', JSON.stringify(userData))
+    setUser(userData)
     return true
   }, [])
 
   const logout = useCallback(() => {
-    setUser(null)
-    localStorage.removeItem(SESSION_KEY)
-  }, [])
+    if (user) {
+      saveUserData(user.siteKey)
+      sessionStorage.removeItem('jesa_auth_user')
+      setUser(null)
+    }
+  }, [user])
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading: false }}>
+    <AuthContext.Provider value={{ user, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

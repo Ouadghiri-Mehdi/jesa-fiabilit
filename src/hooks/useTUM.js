@@ -1,5 +1,9 @@
 // src/hooks/useTUM.js
-import { useState, useCallback } from 'react'
+// Logique métier TUM : cumul, fréquence, statut
+// Utilisé par : TUMPage, SeuilStatus, BadActors, CumulCalculator
+
+import { useState, useCallback, useEffect } from 'react'
+import { INITIAL_ARRETS } from '../data/arrets'
 import { DEFAULT_SEUILS } from '../data/seuils'
 import { EQUIPMENT_LIST as INITIAL_EQUIPMENT_LIST } from '../data/equipements'
 
@@ -18,12 +22,24 @@ export function calcFrequence(arrets, equipId, horizonJours) {
 }
 
 export function getStatut(cumul, frequence, seuils) {
-  if (cumul >= seuils.n2.cumul)         return 'alert'
-  if (frequence >= seuils.n2.frequence) return 'alert'
+  // N2 (Alerte / Arbre De Causes) :
+  // - cumul ≥ seuils.n2.cumul  OU  fréquence ≥ seuils.n2.frequence
+  if (cumul >= seuils.n2.cumul)      return 'alert'
+  if (frequence >= seuils.n2.frequence) return 'alert'   // ← AJOUT : fréquence N2 déclenche alerte
+
+  // N1 (Surveillance / Quick Kaizen) :
+  // - cumul ≥ seuils.n1.cumul  OU  fréquence ≥ seuils.n1.frequence
   if (cumul >= seuils.n1.cumul)         return 'watch'
-  if (frequence >= seuils.n1.frequence) return 'watch'
+  if (frequence >= seuils.n1.frequence) return 'watch'   // ← CORRECTION : >= au lieu de >
+
   return 'normal'
 }
+
+// ─── Méthode imposée selon le statut ────────────────────────────────────────
+// Retourne la méthode RCA à imposer en fonction du statut TUM
+// 'alert' → Arbre De Causes (5why) obligatoire
+// 'watch' → Quick Kaizen imposé
+// 'normal' → null (pas d'analyse imposée)
 
 export function getMethode(statut) {
   if (statut === 'alert') return '5why'
@@ -35,40 +51,64 @@ export function getPourcentage(cumul, seuilCumul) {
   return Math.min(100, (cumul / seuilCumul) * 100)
 }
 
-// ─── Clés localStorage ──────────────────────────────────────────────────────
-
-const LS_ARRETS = 'jesa_arrets'
-const LS_SEUILS = 'jesa_seuils'
-const LS_EQUIP  = 'jesa_equipment_list'
-
-function readArrets() {
-  try { return JSON.parse(localStorage.getItem(LS_ARRETS) || '[]') } catch { return [] }
-}
-
-function readSeuils() {
-  try {
-    const raw = localStorage.getItem(LS_SEUILS)
-    return raw ? JSON.parse(raw) : DEFAULT_SEUILS
-  } catch { return DEFAULT_SEUILS }
-}
-
-function readEquipList() {
-  try {
-    const stored = localStorage.getItem(LS_EQUIP)
-    return stored ? JSON.parse(stored) : INITIAL_EQUIPMENT_LIST
-  } catch { return INITIAL_EQUIPMENT_LIST }
-}
-
 // ─── Hook ───────────────────────────────────────────────────────────────────
 
 export default function useTUM() {
-  const [arrets,        setArrets]        = useState(readArrets)
-  const [seuils,        setSeuils]        = useState(readSeuils)
-  const [equipmentList, setEquipmentList] = useState(readEquipList)
+  // Arrêts — persistés en localStorage
+  const [arrets, setArrets] = useState(() => {
+    if (typeof window === 'undefined') return INITIAL_ARRETS
+    try {
+      const stored = window.localStorage.getItem('jesa_arrets')
+      return stored ? JSON.parse(stored) : INITIAL_ARRETS
+    } catch {
+      return INITIAL_ARRETS
+    }
+  })
 
-  const equipIds      = [...new Set(arrets.map(a => a.equipId))]
+  // Seuils — persistés en localStorage
+  const [seuils, setSeuils] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_SEUILS
+    try {
+      const stored = window.localStorage.getItem('jesa_seuils')
+      return stored ? JSON.parse(stored) : DEFAULT_SEUILS
+    } catch {
+      return DEFAULT_SEUILS
+    }
+  })
+
+  // Liste des équipements — persistée en localStorage
+  const [equipmentList, setEquipmentList] = useState(() => {
+    if (typeof window === 'undefined') return INITIAL_EQUIPMENT_LIST
+    try {
+      const stored = window.localStorage.getItem('jesa_equipment_list')
+      return stored ? JSON.parse(stored) : INITIAL_EQUIPMENT_LIST
+    } catch {
+      return INITIAL_EQUIPMENT_LIST
+    }
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('jesa_arrets', JSON.stringify(arrets))
+  }, [arrets])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('jesa_seuils', JSON.stringify(seuils))
+  }, [seuils])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('jesa_equipment_list', JSON.stringify(equipmentList))
+  }, [equipmentList])
+
+  // Référentiel équipements / validation import
   const knownEquipIds = equipmentList.map(e => e.id)
 
+  // Équipements uniques détectés dans les arrêts
+  const equipIds = [...new Set(arrets.map(a => a.equipId))]
+
+  // Équipements en alerte N2 OU sous surveillance N1
   const alertEquips = equipIds.filter(id => {
     const cumulN2 = calcCumul(arrets, id, seuils.n2.horizon)
     const freqN2  = calcFrequence(arrets, id, seuils.n2.horizon)
@@ -78,35 +118,21 @@ export default function useTUM() {
     return getStatut(cumulN1, freqN1, seuils) === 'watch'
   })
 
+  // Ajouter des arrêts (import Excel ou saisie manuelle)
   const ajouterArrets = useCallback((nouveaux) => {
-    const withIds = nouveaux.map(a => ({
-      ...a,
-      id: a.id || `arr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    }))
-    setArrets(prev => {
-      const next = [...withIds, ...prev]
-      localStorage.setItem(LS_ARRETS, JSON.stringify(next))
-      return next
-    })
-    return withIds
+    setArrets(prev => [...prev, ...nouveaux])
   }, [])
 
   const supprimerArret = useCallback((id) => {
-    setArrets(prev => {
-      const next = prev.filter(a => a.id !== id)
-      localStorage.setItem(LS_ARRETS, JSON.stringify(next))
-      return next
-    })
+    setArrets(prev => prev.filter(a => a.id !== id))
   }, [])
 
   const sauvegarderSeuils = useCallback((nouveauxSeuils) => {
     setSeuils(nouveauxSeuils)
-    localStorage.setItem(LS_SEUILS, JSON.stringify(nouveauxSeuils))
   }, [])
 
   const updateEquipmentList = useCallback((list) => {
     setEquipmentList(list)
-    localStorage.setItem(LS_EQUIP, JSON.stringify(list))
   }, [])
 
   return {
@@ -116,7 +142,6 @@ export default function useTUM() {
     equipmentList,
     knownEquipIds,
     alertEquips,
-    loading: false,
     ajouterArrets,
     supprimerArret,
     sauvegarderSeuils,

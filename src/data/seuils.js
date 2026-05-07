@@ -8,7 +8,7 @@ export const DEFAULT_SEUILS = {
     horizon:   30,  // jours d'observation
   },
   n2: {
-    cumul:     4,   // heures cumulées → seuil alerte (Arbre de causes)
+    cumul:     4,   // heures cumulées → seuil alerte (5 Why)
     frequence: 3,   // nombre d'arrêts → seuil alerte
     horizon:   90,  // jours d'observation
   }

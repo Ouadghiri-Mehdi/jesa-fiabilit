@@ -1,10 +1,10 @@
 // src/components/dashboard/DashboardPage.jsx
-import { useState, useMemo } from 'react'
+// Dashboard Fiabilité — synchronisé avec jesa_arrets + jesa_rca_sessions + jesa_seuils
+
+import { useState, useEffect, useMemo, useRef } from 'react'
 import C from '../../tokens/colors'
 import { getStatut, calcCumul, calcFrequence } from '../../hooks/useTUM'
 import { DEFAULT_SEUILS } from '../../data/seuils'
-import { useTUMContext } from '../layout/Layout'
-import { useRCAContext } from '../layout/Layout'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const MOIS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
@@ -49,6 +49,11 @@ function calcAvancement(s) {
   if (s.noeuds?.length > 2) return 50
   if (s.noeuds?.length > 0) return 30
   return 15
+}
+
+function readLS(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback }
+  catch { return fallback }
 }
 
 // ─── Graphiques SVG ───────────────────────────────────────────────────────────
@@ -495,9 +500,26 @@ function LeadingCard({ abbrev, label, value, unit, sub, color, accent }) {
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [periode, setPeriode] = useState('mois')
-  const { arrets: rawArrets, seuils } = useTUMContext() || { arrets: [], seuils: DEFAULT_SEUILS }
-  const { sessions: rawSessions } = useRCAContext() || { sessions: [] }
-  const lastUpdate = new Date()
+  const [rawArrets,   setRawArrets]   = useState([])
+  const [rawSessions, setRawSessions] = useState([])
+  const [seuils,      setSeuils]      = useState(DEFAULT_SEUILS)
+  const [lastUpdate,  setLastUpdate]  = useState(null)
+
+  // ── Lecture localStorage
+  const loadFromStorage = () => {
+    setRawArrets(readLS('jesa_arrets', []))
+    setRawSessions(readLS('jesa_rca_sessions', []))
+    const s = readLS('jesa_seuils', null)
+    if (s) setSeuils(s)
+    setLastUpdate(new Date())
+  }
+
+  useEffect(() => {
+    loadFromStorage()
+    // Rafraîchir si une autre page modifie le localStorage
+    window.addEventListener('storage', loadFromStorage)
+    return () => window.removeEventListener('storage', loadFromStorage)
+  }, [])
 
   // ── Calcul de toutes les métriques
   const kpi = useMemo(() => {
@@ -668,7 +690,7 @@ export default function DashboardPage() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={() => window.location.reload()} style={{
+          <button onClick={loadFromStorage} style={{
             padding: '6px 12px', borderRadius: 8, border: `1px solid ${C.border}`,
             background: '#fff', cursor: 'pointer', fontSize: 12, color: C.text3,
             fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 5,

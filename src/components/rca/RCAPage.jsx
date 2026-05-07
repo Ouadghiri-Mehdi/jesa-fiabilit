@@ -7,7 +7,9 @@ import RCADetail from './RCADetail'
 import NewRCAModal from './NewRCAModal'
 import useNotifs from '../../hooks/useNotifs'
 import { getParticipants } from '../../data/participants'
-import { useRCAContext } from '../layout/Layout'
+import { INITIAL_SESSIONS } from '../../data/rcaSessions'
+
+const STORAGE_KEY = 'jesa_rca_sessions'
 
 // ─── Popup choix participants (utilisé pour le flow TUM → RCA) ───────────────
 function ChoixParticipantsPopup({ session, onChoisir, onClose }) {
@@ -202,8 +204,42 @@ export default function RCAPage() {
   const rcaIdFromUrl = isRcaId ? paramId : null
   const equipIdFromTUM = !isRcaId ? paramId : null
 
-  // ── Sessions Supabase ────────────────────────────────────────────────────────
-  const { sessions, setSessions, loading, createSession, updateSession } = useRCAContext()
+  // ── Sessions persistées en localStorage (avec migration causeArret + zone) ────
+  const [sessions, setSessions] = useState(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+
+        // Charger les arrêts pour retrouver la zone manquante
+        let arrets = []
+        try {
+          const storedArrets = localStorage.getItem('jesa_arrets')
+          if (storedArrets) arrets = JSON.parse(storedArrets)
+        } catch {}
+
+        return parsed.map(s => {
+          const match = INITIAL_SESSIONS.find(is => is.id === s.id)
+          // Si la zone manque, chercher dans les arrêts de cet équipement
+          const zone = s.zone || arrets.find(a => a.equipId === s.equipId)?.zone || ''
+          return {
+            ...s,
+            zone,
+            causeArret: s.causeArret !== undefined ? s.causeArret : (match?.causeArret || ''),
+            cumulArret: match != null ? match.cumulArret : s.cumulArret,
+            frequence:  match != null ? match.frequence  : s.frequence,
+          }
+        })
+      }
+    } catch {}
+    return INITIAL_SESSIONS
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
+    } catch {}
+  }, [sessions])
 
   // ── États UI ─────────────────────────────────────────────────────────────────
   const [selected, setSelected]               = useState(null)
@@ -225,16 +261,24 @@ export default function RCAPage() {
 
   // ── Flow TUM → RCA : trouver/créer session puis afficher popup participants ──
   useEffect(() => {
-    if (!equipIdFromTUM || autoOpenDone || loading) return
+    if (!equipIdFromTUM || autoOpenDone) return
     setAutoOpenDone(true)
 
-    const existing = sessions.find(
+    // Lire les sessions depuis localStorage (fraîchement mises à jour par TUM)
+    let currentSessions = sessions
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored) currentSessions = JSON.parse(stored)
+    } catch {}
+
+    const existing = currentSessions.find(
       s => s.equipId === equipIdFromTUM && s.statut !== 'cloturee'
     )
 
     if (existing) {
       setShowParticipantsForTUM(existing)
     } else {
+      // Créer une nouvelle session si aucune n'existe
       const niveauNum = niveauFromQuery || 2
       const today = new Date().toISOString().slice(0, 10)
       const newSession = {
@@ -243,6 +287,7 @@ export default function RCAPage() {
         dateOuverture: today,
         niveau: niveauNum,
         source: 'TUM',
+        type: 'equipement',
         responsable: '',
         cumulArret: 0,
         frequence: 0,
@@ -256,11 +301,11 @@ export default function RCAPage() {
         noeuds: [],
         actionsGenerees: [],
       }
-      createSession(newSession).then(created => {
-        setShowParticipantsForTUM(created || newSession)
-      })
+      const merged = [newSession, ...currentSessions]
+      setSessions(merged)
+      setShowParticipantsForTUM(newSession)
     }
-  }, [equipIdFromTUM, autoOpenDone, loading]) // eslint-disable-line
+  }, [equipIdFromTUM, autoOpenDone]) // eslint-disable-line
 
   // ── Ouverture manuelle via ?modal=new ────────────────────────────────────────
   useEffect(() => {
@@ -269,19 +314,19 @@ export default function RCAPage() {
   }, [location.search])
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
-  const handleCreate = async (s) => {
-    const created = await createSession(s)
+  const handleCreate = (s) => {
+    setSessions(p => [s, ...p])
     setShowNew(false)
-    setShowParticipantsForTUM(created || s)
+    setShowParticipantsForTUM(s)
   }
 
-  const handleUpdate = async (u) => {
-    const updated = await updateSession(u)
-    if (selected && selected.id === u.id) setSelected(updated || u)
+  const handleUpdate = (u) => {
+    setSessions(prev => prev.map(s => s.id === u.id ? u : s))
+    if (selected && selected.id === u.id) setSelected(u)
   }
 
   const handleUpdateSession = (u) => {
-    updateSession(u)
+    setSessions(p => p.map(s => s.id === u.id ? u : s))
   }
 
   const handleBack = () => {
@@ -301,14 +346,15 @@ export default function RCAPage() {
     navigate('/rca', { replace: true })
   }
 
-  const handleParticipantsChoisis = async (participants) => {
+  const handleParticipantsChoisis = (participants) => {
     const session = showParticipantsForTUM
     const now = new Date().toISOString()
+    // Pour N1 sans méthode : on préassigne kaizen (suggéré) pour éviter le popup de méthode dans RCADetail
     const methodeEffective = session.methode || (session.niveau === 1 ? 'kaizen' : '5why')
     const updated = { ...session, methode: methodeEffective, participants, statut: 'en-cours', dateHeureDebut: session.dateHeureDebut || now }
-    await handleUpdate(updated)
+    handleUpdate(updated)
     setShowParticipantsForTUM(null)
-    setSelectedParticipants(participants)
+    setSelectedParticipants(participants)  // ← participants transmis à RCADetail
     navigate(`/rca/${session.id}`)
   }
 

@@ -1,7 +1,6 @@
 // src/components/actions/ActionsPage.jsx
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import C from '../../tokens/colors'
-import { useRCAContext } from '../layout/Layout'
 
 const STATUT_CFG = {
   'pas-commence': { label: 'Non commencé', bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
@@ -10,6 +9,15 @@ const STATUT_CFG = {
   'retard':       { label: 'En retard',    bg: '#fff7ed', color: '#ea580c', border: '#fed7aa' },
   'ouverte':      { label: 'Non commencé', bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
   'cloturee':     { label: 'Clôturé',      bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' },
+}
+
+function readLS(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback }
+  catch { return fallback }
+}
+
+function saveLS(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
 }
 
 function RetardBadge({ delai, statut }) {
@@ -191,11 +199,21 @@ function EquipGroup({ equipId, actions, onStatusChange, collapsed, onToggle }) {
 }
 
 export default function ActionsPage() {
-  const { sessions, updateSession } = useRCAContext() || { sessions: [], updateSession: async () => {} }
+  const [sessions, setSessions] = useState(() => readLS('jesa_rca_sessions', []))
   const [search,     setSearch]     = useState('')
   const [filtStatut, setFiltStatut] = useState('')
   const [filtEquip,  setFiltEquip]  = useState('')
   const [collapsed,  setCollapsed]  = useState({})
+
+  useEffect(() => {
+    const handle = e => {
+      if (e.key === 'jesa_rca_sessions' && e.newValue) {
+        try { setSessions(JSON.parse(e.newValue)) } catch {}
+      }
+    }
+    window.addEventListener('storage', handle)
+    return () => window.removeEventListener('storage', handle)
+  }, [])
 
   const allActions = useMemo(() => {
     const result = []
@@ -242,15 +260,12 @@ export default function ActionsPage() {
   const txReal    = total ? Math.round((cloturees / total) * 100) : 0
 
   const handleStatusChange = (sessionId, actionId, newStatut) => {
-    const session = sessions.find(s => s.id === sessionId)
-    if (!session) return
-    const updated = {
-      ...session,
-      actionsGenerees: (session.actionsGenerees || []).map(a =>
-        a.id === actionId ? { ...a, statut: newStatut } : a
-      )
-    }
-    updateSession(updated)
+    const updated = sessions.map(s => {
+      if (s.id !== sessionId) return s
+      return { ...s, actionsGenerees: (s.actionsGenerees || []).map(a => a.id === actionId ? { ...a, statut: newStatut } : a) }
+    })
+    setSessions(updated)
+    saveLS('jesa_rca_sessions', updated)
   }
 
   const toggleGroup = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))

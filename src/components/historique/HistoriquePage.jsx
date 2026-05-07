@@ -1,8 +1,8 @@
 // src/components/historique/HistoriquePage.jsx
 import { useState, useMemo } from 'react'
 import C from '../../tokens/colors'
+import useTUM from '../../hooks/useTUM'
 import { getStatut } from '../../hooks/useTUM'
-import { useTUMContext, useRCAContext } from '../layout/Layout'
 import { POSTES_TECHNIQUES } from '../../data/postes_techniques'
 
 const STATUT_RCA = {
@@ -19,6 +19,11 @@ const STATUT_ACT = {
 
 const th = { padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748b', letterSpacing: '1px', textTransform: 'uppercase', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap', background: '#f8fafc' }
 const td = { padding: '11px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#334155' }
+
+function readLS(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback }
+  catch { return fallback }
+}
 
 function ProgressBar({ value, statut }) {
   const color = statut === 'cloturee' ? '#059669' : statut === 'retard' ? '#dc2626' : '#d97706'
@@ -92,7 +97,7 @@ function EquipCard({ equip, onSelect, stats, rcaCount }) {
   )
 }
 
-function DossierEquip({ equip, onBack, arrets, allRcaSessions }) {
+function DossierEquip({ equip, onBack, arrets }) {
   const [tab, setTab] = useState('tum')
   const [docs, setDocs] = useState([])
 
@@ -101,7 +106,8 @@ function DossierEquip({ equip, onBack, arrets, allRcaSessions }) {
   const cumulTotal   = arretsEquip.reduce((s, a) => s + (a.duration || 0), 0)
   const dernierArret = arretsEquip[0]
 
-  const rcaSessions = (allRcaSessions || []).filter(s => s.equipId === equip.id)
+  // RCA depuis localStorage
+  const rcaSessions = readLS('jesa_rca_sessions', []).filter(s => s.equipId === equip.id)
 
   // Actions depuis actionsGenerees des sessions
   const actions = rcaSessions.flatMap(s =>
@@ -192,7 +198,7 @@ function DossierEquip({ equip, onBack, arrets, allRcaSessions }) {
                 ) : arretsEquip.map((a, i) => (
                   <tr key={i} onMouseOver={e => e.currentTarget.style.background = '#f8fafc'} onMouseOut={e => e.currentTarget.style.background = ''}>
                     <td style={td}>{new Date(a.startTime).toLocaleDateString('fr-FR')} {new Date(a.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
-                    <td style={td}>{a.startTime && a.duration ? (() => { const d = new Date(new Date(a.startTime).getTime() + a.duration * 3600000); return `${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` })() : '—'}</td>
+                    <td style={td}>{a.endTime ? `${new Date(a.endTime).toLocaleDateString('fr-FR')} ${new Date(a.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : '—'}</td>
                     <td style={{ ...td, fontWeight: 700, color: '#dc2626' }}>{a.duration?.toFixed(1)}h</td>
                     <td style={td}>{a.zone || '—'}</td>
                     <td style={td}>{a.cause || '—'}</td>
@@ -313,13 +319,13 @@ function DossierEquip({ equip, onBack, arrets, allRcaSessions }) {
 }
 
 export default function HistoriquePage() {
-  const { arrets, seuils } = useTUMContext() || { arrets: [], seuils: { n1: { cumul: 8, frequence: 3, horizon: 30 }, n2: { cumul: 24, frequence: 5, horizon: 30 } } }
-  const { sessions: rcaSessions } = useRCAContext() || { sessions: [] }
+  const { arrets, seuils } = useTUM()
   const [search, setSearch]     = useState('')
   const [filtEqSeq, setFiltEqSeq] = useState('')
   const [selected, setSelected] = useState(null)
 
-  const knownPostesList = useMemo(() => POSTES_TECHNIQUES, [])
+  // Source de vérité : localStorage d'abord, fallback hardcodé
+  const knownPostesList = useMemo(() => readLS('jesa_postes_techniques', POSTES_TECHNIQUES), [])
 
   // Stats par équipement
   const equipStats = useMemo(() => {
@@ -337,10 +343,11 @@ export default function HistoriquePage() {
 
   // Compte des sessions RCA par équipement
   const rcaCountMap = useMemo(() => {
+    const sessions = readLS('jesa_rca_sessions', [])
     const map = {}
-    rcaSessions.forEach(s => { map[s.equipId] = (map[s.equipId] || 0) + 1 })
+    sessions.forEach(s => { map[s.equipId] = (map[s.equipId] || 0) + 1 })
     return map
-  }, [rcaSessions])
+  }, [])
 
   // Valeurs uniques pour le filtre EQ/SEQ
   const eqSeqOptions = useMemo(() => [...new Set(knownPostesList.map(p => p.eqSeq).filter(Boolean))], [knownPostesList])
@@ -356,7 +363,7 @@ export default function HistoriquePage() {
   }, [search, filtEqSeq, knownPostesList])
 
   if (selected) {
-    return <DossierEquip equip={selected} onBack={() => setSelected(null)} arrets={arrets} allRcaSessions={rcaSessions} />
+    return <DossierEquip equip={selected} onBack={() => setSelected(null)} arrets={arrets} />
   }
 
   const totalCumul      = arrets.reduce((s, a) => s + (a.duration || 0), 0)

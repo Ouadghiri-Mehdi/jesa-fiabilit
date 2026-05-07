@@ -6,34 +6,23 @@ import Topbar from './Topbar'
 import Notif from '../shared/Notif'
 import ChatbotFAB from '../shared/ChatbotFAB'
 import useNotifs from '../../hooks/useNotifs'
-import useTUM from '../../hooks/useTUM'
-import useRCASessions from '../../hooks/useRCASessions'
 
+// NotifContext — partagé à tous les enfants via Context
 import { createContext, useContext } from 'react'
 export const NotifContext = createContext(null)
 export const useNotifContext = () => useContext(NotifContext)
-
-// TUMContext — données TUM persistantes pendant toute la session
-export const TUMContext = createContext(null)
-export const useTUMContext = () => useContext(TUMContext)
-
-// RCAContext — sessions RCA persistantes pendant toute la session
-export const RCAContext = createContext(null)
-export const useRCAContext = () => useContext(RCAContext)
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false)
   const { notifs, showNotif, dismissNotif } = useNotifs()
   const { pathname } = useLocation()
-  const tumData = useTUM()
-  const rcaData = useRCASessions()
 
+  // Chatbot visible partout SAUF sur les pages RCA
   const showChatbot = !pathname.startsWith('/rca')
+
   const SB_W = collapsed ? 60 : 236
 
   return (
-    <TUMContext.Provider value={tumData}>
-    <RCAContext.Provider value={rcaData}>
     <NotifContext.Provider value={showNotif}>
       <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc' }}>
 
@@ -54,11 +43,11 @@ export default function Layout() {
         </div>
 
         <Notif notifs={notifs} dismiss={dismissNotif} />
+
+        {/* ── Chatbot FAB — masqué sur /rca */}
         {showChatbot && <ChatbotFAB pathname={pathname} />}
 
       </div>
     </NotifContext.Provider>
-    </RCAContext.Provider>
-    </TUMContext.Provider>
   )
 }

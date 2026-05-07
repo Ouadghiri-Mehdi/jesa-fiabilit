@@ -2,9 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import C from '../../tokens/colors'
-import { calcCumul, calcFrequence, getStatut } from '../../hooks/useTUM'
-import { useTUMContext } from '../layout/Layout'
-import { useRCAContext } from '../layout/Layout'
+import useTUM, { calcCumul, calcFrequence, getStatut } from '../../hooks/useTUM'
 import useNotifs from '../../hooks/useNotifs'
 import AlertBanner from '../shared/AlertBanner'
 import Notif from '../shared/Notif'
@@ -12,6 +10,78 @@ import ImportExcel from './ImportExcel'
 import SaisieManuelle from './SaisieManuelle'
 import BadActors from './BadActors'
 import SeuilsModal from './SeuilsModal'
+import { INITIAL_SESSIONS } from '../../data/rcaSessions'
+
+// ─── Synchronise les équipements en alerte vers les sessions RCA ─────────────
+function syncAlertsToRCA(updatedArrets, nouveauxArrets, seuils) {
+  let sessions = []
+  try {
+    const stored = localStorage.getItem('jesa_rca_sessions')
+    sessions = stored ? JSON.parse(stored) : [...INITIAL_SESSIONS]
+  } catch {
+    sessions = [...INITIAL_SESSIONS]
+  }
+
+  const affectedIds = [...new Set(nouveauxArrets.map(a => a.equipId))]
+  let changed = false
+
+  affectedIds.forEach(equipId => {
+    const trigger = nouveauxArrets.find(a => a.equipId === equipId)
+      || updatedArrets.filter(a => a.equipId === equipId).slice(-1)[0]
+
+    // Session active déjà existante → mettre à jour causeArret si manquant
+    const existingIdx = sessions.findIndex(s => s.equipId === equipId && s.statut !== 'cloturee')
+    if (existingIdx !== -1) {
+      if (!sessions[existingIdx].causeArret && trigger?.cause) {
+        sessions[existingIdx] = { ...sessions[existingIdx], causeArret: trigger.cause }
+        changed = true
+      }
+      return
+    }
+
+    // Vérifier si les seuils sont dépassés pour créer une nouvelle session
+    const cumulN2 = calcCumul(updatedArrets, equipId, seuils.n2.horizon)
+    const freqN2  = calcFrequence(updatedArrets, equipId, seuils.n2.horizon)
+    const isAlert = getStatut(cumulN2, freqN2, seuils) === 'alert'
+
+    const cumulN1 = calcCumul(updatedArrets, equipId, seuils.n1.horizon)
+    const freqN1  = calcFrequence(updatedArrets, equipId, seuils.n1.horizon)
+    const isWatch = getStatut(cumulN1, freqN1, seuils) === 'watch'
+
+    if (!isAlert && !isWatch) return
+
+    const niveau = isAlert ? 2 : 1
+    const today = new Date().toISOString().slice(0, 10)
+    const id = `RCA-${today.replace(/-/g, '')}-${Math.floor(Math.random() * 900 + 100)}`
+
+    sessions.push({
+      id,
+      equipId,
+      zone: trigger?.zone || '',
+      dateOuverture: today,
+      niveau,
+      source: 'TUM',
+      type: 'equipement',
+      responsable: '',
+      cumulArret: isAlert ? cumulN2 : cumulN1,
+      frequence: isAlert ? freqN2 : freqN1,
+      tauxPanne: 0,
+      disponibilite: 100,
+      participants: [],
+      statut: 'non-commencee',
+      methode: niveau === 2 ? '5why' : 'kaizen',
+      phenomene: trigger?.description || trigger?.cause || '',
+      causeArret: trigger?.cause || '',
+      noeuds: [],
+      actionsGenerees: [],
+    })
+    changed = true
+  })
+
+  if (changed) {
+    localStorage.setItem('jesa_rca_sessions', JSON.stringify(sessions))
+  }
+}
 
 export default function TUMPage() {
   const navigate = useNavigate()
@@ -21,13 +91,13 @@ export default function TUMPage() {
     arrets, seuils, alertEquips,
     equipmentList, knownEquipIds, updateEquipmentList,
     ajouterArrets, sauvegarderSeuils,
-  } = useTUMContext()
+  } = useTUM()
 
-  const { sessions, createSession } = useRCAContext()
+  const [activeView, setActiveView] = useState('data')
+  const [showSaisieInline, setShowSaisieInline] = useState(false)
+  const [showSeuils, setShowSeuils] = useState(false)
 
-  const [activeView,        setActiveView]        = useState('data')
-  const [showSaisieInline,  setShowSaisieInline]  = useState(false)
-  const [showSeuils,        setShowSeuils]        = useState(false)
+  // État pour la vue dans Bad Actors
   const [badActorsViewMode, setBadActorsViewMode] = useState('pareto')
 
   useEffect(() => {
@@ -47,66 +117,17 @@ export default function TUMPage() {
     navigate('/tum', { replace: true })
   }
 
-  function syncAlertsToRCA(allArrets, nouveaux, currentSeuils) {
-    if (!nouveaux.length) return
-    const affectedIds = [...new Set(nouveaux.map(a => a.equipId))]
-    const activeByEquip = {}
-    for (const s of sessions.filter(s => s.statut !== 'cloturee')) {
-      activeByEquip[s.equipId] = s
-    }
-
-    for (const equipId of affectedIds) {
-      if (activeByEquip[equipId]) continue
-
-      const trigger  = nouveaux.find(a => a.equipId === equipId)
-                    || allArrets.filter(a => a.equipId === equipId).slice(-1)[0]
-
-      const cumulN2 = calcCumul(allArrets, equipId, currentSeuils.n2.horizon)
-      const freqN2  = calcFrequence(allArrets, equipId, currentSeuils.n2.horizon)
-      const isAlert = getStatut(cumulN2, freqN2, currentSeuils) === 'alert'
-      const cumulN1 = calcCumul(allArrets, equipId, currentSeuils.n1.horizon)
-      const freqN1  = calcFrequence(allArrets, equipId, currentSeuils.n1.horizon)
-      const isWatch = getStatut(cumulN1, freqN1, currentSeuils) === 'watch'
-      if (!isAlert && !isWatch) continue
-
-      const niveau = isAlert ? 2 : 1
-      const today  = new Date().toISOString().slice(0, 10)
-      const id     = `RCA-${today.replace(/-/g, '')}-${(Date.now() % 900) + 100}`
-
-      createSession({
-        id,
-        equipId,
-        titre:          equipId,
-        zone:           trigger?.zone || '',
-        dateOuverture:  today,
-        niveau,
-        source:         'TUM',
-        statut:         'non-commencee',
-        methode:        niveau === 2 ? '5why' : 'kaizen',
-        phenomene:      trigger?.cause || '',
-        causeArret:     trigger?.cause || '',
-        cumulArret:     isAlert ? cumulN2 : cumulN1,
-        frequence:      isAlert ? freqN2  : freqN1,
-        tauxPanne:      0,
-        disponibilite:  100,
-        participants:   [],
-        noeuds:         [],
-        actionsGenerees: [],
-      })
-    }
-  }
-
   const handleImport = (nouveaux) => {
-    const inserted  = ajouterArrets(nouveaux)
-    const allArrets = [...arrets, ...inserted]
-    syncAlertsToRCA(allArrets, inserted, seuils)
+    const updatedArrets = [...arrets, ...nouveaux]
+    ajouterArrets(nouveaux)
+    syncAlertsToRCA(updatedArrets, nouveaux, seuils)
     showNotif('✅ Import réussi', `${nouveaux.length} arrêt(s) importé(s) dans le TUM`, 'green')
   }
 
   const handleSaisie = (arret) => {
-    const inserted  = ajouterArrets([arret])
-    const allArrets = [...arrets, ...inserted]
-    syncAlertsToRCA(allArrets, inserted, seuils)
+    const updatedArrets = [...arrets, arret]
+    ajouterArrets([arret])
+    syncAlertsToRCA(updatedArrets, [arret], seuils)
     showNotif('✅ Arrêt enregistré', `${arret.equipId} · ${arret.duration}h archivé`, 'blue')
     setShowSaisieInline(false)
   }
@@ -180,18 +201,25 @@ export default function TUMPage() {
             </div>
           )}
 
-          <ImportExcel onImport={handleImport} showNotif={showNotif} />
+          <ImportExcel
+            onImport={handleImport}
+            showNotif={showNotif}
+          />
 
           {!showSaisieInline && (
             <div style={{ marginTop: 4, marginBottom: 16, display: 'flex', justifyContent: 'center' }}>
               <button
                 onClick={() => setShowSaisieInline(true)}
                 style={{
-                  background: '#f1f5f9', border: `1.5px solid ${C.border2}`,
-                  borderRadius: 999, padding: '12px 36px',
-                  color: C.text2, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                  background: '#f1f5f9',
+                  border: `1.5px solid ${C.border2}`,
+                  borderRadius: 999,
+                  padding: '12px 36px',
+                  color: C.text2,
+                  fontSize: 14, fontWeight: 600, cursor: 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  transition: 'all .2s', fontFamily: "'DM Sans', sans-serif",
+                  transition: 'all .2s',
+                  fontFamily: "'DM Sans', sans-serif",
                 }}
                 onMouseEnter={e => {
                   e.currentTarget.style.background = C.navy
