@@ -61,16 +61,9 @@ function sessionToRow(s, siteId, userId) {
 
 export default function useRCASessions() {
   const { user } = useAuth()
+  const siteId = user?.siteId || null
   const [sessions,  setSessions]  = useState([])
-  const [siteId,    setSiteId]    = useState(null)
   const [loading,   setLoading]   = useState(true)
-
-  // Charger le site_id du profil
-  useEffect(() => {
-    if (!user?.id) return
-    supabase.from('profiles').select('site_id').eq('id', user.id).single()
-      .then(({ data }) => { if (data) setSiteId(data.site_id) })
-  }, [user?.id])
 
   // Charger les sessions depuis Supabase
   useEffect(() => {
@@ -79,7 +72,7 @@ export default function useRCASessions() {
 
     async function load() {
       setLoading(true)
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('rca_sessions')
         .select('*')
         .order('created_at', { ascending: false })
@@ -96,26 +89,30 @@ export default function useRCASessions() {
 
   // Créer une session
   const createSession = useCallback(async (s) => {
-    if (!siteId || !user?.id) return null
-    const row = sessionToRow(s, siteId, user.id)
+    if (!user?.id) return null
+    const sid = user.siteId
+    if (!sid) { console.error('createSession: siteId manquant'); return null }
+    const row = sessionToRow(s, sid, user.id)
     const { data, error } = await supabase
       .from('rca_sessions').insert(row).select().single()
-    if (error || !data) return null
+    if (error) { console.error('createSession error:', error.message); return null }
     const session = rowToSession(data)
     setSessions(prev => [session, ...prev])
     return session
-  }, [siteId, user?.id])
+  }, [user])
 
   // Mettre à jour une session
   const updateSession = useCallback(async (u) => {
-    if (!siteId || !user?.id) return
-    const row = sessionToRow(u, siteId, user.id)
-    const { data } = await supabase
+    if (!user?.id) return u
+    const sid = user.siteId
+    const row = sessionToRow(u, sid, user.id)
+    const { data, error } = await supabase
       .from('rca_sessions').update(row).eq('id', u.id).select().single()
+    if (error) console.error('updateSession error:', error.message)
     const updated = data ? rowToSession(data) : u
     setSessions(prev => prev.map(s => s.id === u.id ? updated : s))
     return updated
-  }, [siteId, user?.id])
+  }, [user])
 
   // Supprimer une session
   const deleteSession = useCallback(async (id) => {

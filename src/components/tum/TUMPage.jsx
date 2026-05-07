@@ -10,82 +10,67 @@ import ImportExcel from './ImportExcel'
 import SaisieManuelle from './SaisieManuelle'
 import BadActors from './BadActors'
 import SeuilsModal from './SeuilsModal'
-import { INITIAL_SESSIONS } from '../../data/rcaSessions'
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../auth/AuthContext'
 
-// ─── Synchronise les équipements en alerte vers les sessions RCA ─────────────
-function syncAlertsToRCA(updatedArrets, nouveauxArrets, seuils) {
-  let sessions = []
-  try {
-    const stored = localStorage.getItem('jesa_rca_sessions')
-    sessions = stored ? JSON.parse(stored) : [...INITIAL_SESSIONS]
-  } catch {
-    sessions = [...INITIAL_SESSIONS]
-  }
-
+// ─── Synchronise les équipements en alerte vers les sessions RCA (Supabase) ──
+async function syncAlertsToRCA(updatedArrets, nouveauxArrets, seuils, siteId, userId) {
+  if (!siteId || !userId) return
   const affectedIds = [...new Set(nouveauxArrets.map(a => a.equipId))]
-  let changed = false
+  if (!affectedIds.length) return
 
-  affectedIds.forEach(equipId => {
+  // Récupérer sessions actives depuis Supabase
+  const { data: sessions } = await supabase
+    .from('rca_sessions')
+    .select('id, equip_id, cause_arret, statut')
+    .eq('site_id', siteId)
+    .neq('statut', 'cloturee')
+
+  for (const equipId of affectedIds) {
     const trigger = nouveauxArrets.find(a => a.equipId === equipId)
       || updatedArrets.filter(a => a.equipId === equipId).slice(-1)[0]
 
-    // Session active déjà existante → mettre à jour causeArret si manquant
-    const existingIdx = sessions.findIndex(s => s.equipId === equipId && s.statut !== 'cloturee')
-    if (existingIdx !== -1) {
-      if (!sessions[existingIdx].causeArret && trigger?.cause) {
-        sessions[existingIdx] = { ...sessions[existingIdx], causeArret: trigger.cause }
-        changed = true
+    const existing = sessions?.find(s => s.equip_id === equipId)
+    if (existing) {
+      if (!existing.cause_arret && trigger?.cause) {
+        await supabase.from('rca_sessions')
+          .update({ cause_arret: trigger.cause })
+          .eq('id', existing.id)
       }
-      return
+      continue
     }
 
-    // Vérifier si les seuils sont dépassés pour créer une nouvelle session
     const cumulN2 = calcCumul(updatedArrets, equipId, seuils.n2.horizon)
     const freqN2  = calcFrequence(updatedArrets, equipId, seuils.n2.horizon)
     const isAlert = getStatut(cumulN2, freqN2, seuils) === 'alert'
-
     const cumulN1 = calcCumul(updatedArrets, equipId, seuils.n1.horizon)
     const freqN1  = calcFrequence(updatedArrets, equipId, seuils.n1.horizon)
     const isWatch = getStatut(cumulN1, freqN1, seuils) === 'watch'
-
-    if (!isAlert && !isWatch) return
+    if (!isAlert && !isWatch) continue
 
     const niveau = isAlert ? 2 : 1
-    const today = new Date().toISOString().slice(0, 10)
-    const id = `RCA-${today.replace(/-/g, '')}-${Math.floor(Math.random() * 900 + 100)}`
+    const today  = new Date().toISOString().slice(0, 10)
+    const id     = `RCA-${today.replace(/-/g, '')}-${Math.floor(Math.random() * 900 + 100)}`
 
-    sessions.push({
-      id,
-      equipId,
-      zone: trigger?.zone || '',
-      dateOuverture: today,
-      niveau,
-      source: 'TUM',
-      type: 'equipement',
-      responsable: '',
-      cumulArret: isAlert ? cumulN2 : cumulN1,
+    await supabase.from('rca_sessions').insert({
+      id, equip_id: equipId, zone: trigger?.zone || '',
+      date_ouverture: today, niveau, source: 'TUM',
+      responsable: '', cumul_arret: isAlert ? cumulN2 : cumulN1,
       frequence: isAlert ? freqN2 : freqN1,
-      tauxPanne: 0,
-      disponibilite: 100,
-      participants: [],
-      statut: 'non-commencee',
+      participants: [], statut: 'non-commencee',
       methode: niveau === 2 ? '5why' : 'kaizen',
       phenomene: trigger?.description || trigger?.cause || '',
-      causeArret: trigger?.cause || '',
-      noeuds: [],
-      actionsGenerees: [],
+      cause_arret: trigger?.cause || '',
+      noeuds: [], actions_generees: [],
+      site_id: siteId, created_by: userId,
     })
-    changed = true
-  })
-
-  if (changed) {
-    localStorage.setItem('jesa_rca_sessions', JSON.stringify(sessions))
   }
 }
 
 export default function TUMPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user } = useAuth()
   const { notifs, showNotif, dismissNotif } = useNotifs()
   const {
     arrets, seuils, alertEquips,
@@ -120,14 +105,14 @@ export default function TUMPage() {
   const handleImport = (nouveaux) => {
     const updatedArrets = [...arrets, ...nouveaux]
     ajouterArrets(nouveaux)
-    syncAlertsToRCA(updatedArrets, nouveaux, seuils)
+    syncAlertsToRCA(updatedArrets, nouveaux, seuils, user?.siteId, user?.id)
     showNotif('✅ Import réussi', `${nouveaux.length} arrêt(s) importé(s) dans le TUM`, 'green')
   }
 
   const handleSaisie = (arret) => {
     const updatedArrets = [...arrets, arret]
     ajouterArrets([arret])
-    syncAlertsToRCA(updatedArrets, [arret], seuils)
+    syncAlertsToRCA(updatedArrets, [arret], seuils, user?.siteId, user?.id)
     showNotif('✅ Arrêt enregistré', `${arret.equipId} · ${arret.duration}h archivé`, 'blue')
     setShowSaisieInline(false)
   }

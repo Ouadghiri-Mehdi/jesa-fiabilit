@@ -69,6 +69,7 @@ async function fetchProfile(userId) {
   return {
     site:    data?.sites?.nom  || '',
     siteKey: (data?.sites?.code || '').toLowerCase(),
+    siteId:  data?.site_id     || null,
     role:    data?.role         || 'user',
     nom:     data?.nom          || '',
     prenom:  data?.prenom       || '',
