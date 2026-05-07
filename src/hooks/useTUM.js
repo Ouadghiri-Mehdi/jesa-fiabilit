@@ -1,9 +1,7 @@
 // src/hooks/useTUM.js
-// Logique métier TUM : cumul, fréquence, statut
-// Utilisé par : TUMPage, SeuilStatus, BadActors, CumulCalculator
-
 import { useState, useCallback, useEffect } from 'react'
-import { INITIAL_ARRETS } from '../data/arrets'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../auth/AuthContext'
 import { DEFAULT_SEUILS } from '../data/seuils'
 import { EQUIPMENT_LIST as INITIAL_EQUIPMENT_LIST } from '../data/equipements'
 
@@ -22,24 +20,12 @@ export function calcFrequence(arrets, equipId, horizonJours) {
 }
 
 export function getStatut(cumul, frequence, seuils) {
-  // N2 (Alerte / Arbre De Causes) :
-  // - cumul ≥ seuils.n2.cumul  OU  fréquence ≥ seuils.n2.frequence
-  if (cumul >= seuils.n2.cumul)      return 'alert'
-  if (frequence >= seuils.n2.frequence) return 'alert'   // ← AJOUT : fréquence N2 déclenche alerte
-
-  // N1 (Surveillance / Quick Kaizen) :
-  // - cumul ≥ seuils.n1.cumul  OU  fréquence ≥ seuils.n1.frequence
+  if (cumul >= seuils.n2.cumul)         return 'alert'
+  if (frequence >= seuils.n2.frequence) return 'alert'
   if (cumul >= seuils.n1.cumul)         return 'watch'
-  if (frequence >= seuils.n1.frequence) return 'watch'   // ← CORRECTION : >= au lieu de >
-
+  if (frequence >= seuils.n1.frequence) return 'watch'
   return 'normal'
 }
-
-// ─── Méthode imposée selon le statut ────────────────────────────────────────
-// Retourne la méthode RCA à imposer en fonction du statut TUM
-// 'alert' → Arbre De Causes (5why) obligatoire
-// 'watch' → Quick Kaizen imposé
-// 'normal' → null (pas d'analyse imposée)
 
 export function getMethode(statut) {
   if (statut === 'alert') return '5why'
@@ -51,64 +37,71 @@ export function getPourcentage(cumul, seuilCumul) {
   return Math.min(100, (cumul / seuilCumul) * 100)
 }
 
+// Convertit une ligne Supabase → format app
+function rowToArret(row) {
+  return {
+    id:          row.id,
+    equipId:     row.equip_id,
+    designation: row.designation || '',
+    zone:        row.zone || '',
+    startTime:   row.start_time,
+    duration:    row.duration,
+    cause:       row.cause || '',
+  }
+}
+
+// Convertit seuils Supabase → format app
+function rowToSeuils(row) {
+  if (!row) return DEFAULT_SEUILS
+  return {
+    n1: { cumul: row.n1_cumul, frequence: row.n1_frequence, horizon: row.n1_horizon },
+    n2: { cumul: row.n2_cumul, frequence: row.n2_frequence, horizon: row.n2_horizon },
+  }
+}
+
 // ─── Hook ───────────────────────────────────────────────────────────────────
 
 export default function useTUM() {
-  // Arrêts — persistés en localStorage
-  const [arrets, setArrets] = useState(() => {
-    if (typeof window === 'undefined') return INITIAL_ARRETS
-    try {
-      const stored = window.localStorage.getItem('jesa_arrets')
-      return stored ? JSON.parse(stored) : INITIAL_ARRETS
-    } catch {
-      return INITIAL_ARRETS
-    }
-  })
+  const { user } = useAuth()
+  const [arrets,        setArrets]        = useState([])
+  const [seuils,        setSeuils]        = useState(DEFAULT_SEUILS)
+  const [seuilsId,      setSeuilsId]      = useState(null)
+  const [equipmentList, setEquipmentList] = useState(INITIAL_EQUIPMENT_LIST)
+  const [loading,       setLoading]       = useState(true)
 
-  // Seuils — persistés en localStorage
-  const [seuils, setSeuils] = useState(() => {
-    if (typeof window === 'undefined') return DEFAULT_SEUILS
-    try {
-      const stored = window.localStorage.getItem('jesa_seuils')
-      return stored ? JSON.parse(stored) : DEFAULT_SEUILS
-    } catch {
-      return DEFAULT_SEUILS
-    }
-  })
-
-  // Liste des équipements — persistée en localStorage
-  const [equipmentList, setEquipmentList] = useState(() => {
-    if (typeof window === 'undefined') return INITIAL_EQUIPMENT_LIST
-    try {
-      const stored = window.localStorage.getItem('jesa_equipment_list')
-      return stored ? JSON.parse(stored) : INITIAL_EQUIPMENT_LIST
-    } catch {
-      return INITIAL_EQUIPMENT_LIST
-    }
-  })
-
+  // Charger arrêts + seuils + équipements depuis Supabase
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem('jesa_arrets', JSON.stringify(arrets))
-  }, [arrets])
+    if (!user?.site) return
+    let cancelled = false
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem('jesa_seuils', JSON.stringify(seuils))
-  }, [seuils])
+    async function load() {
+      setLoading(true)
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem('jesa_equipment_list', JSON.stringify(equipmentList))
-  }, [equipmentList])
+      const [arretsRes, seuilsRes, equipsRes] = await Promise.all([
+        supabase.from('arrets').select('*').order('start_time', { ascending: false }),
+        supabase.from('seuils').select('*').single(),
+        supabase.from('equipements').select('*'),
+      ])
 
-  // Référentiel équipements / validation import
+      if (cancelled) return
+
+      if (arretsRes.data)  setArrets(arretsRes.data.map(rowToArret))
+      if (seuilsRes.data) {
+        setSeuils(rowToSeuils(seuilsRes.data))
+        setSeuilsId(seuilsRes.data.id)
+      }
+      if (equipsRes.data?.length) setEquipmentList(equipsRes.data)
+
+      setLoading(false)
+    }
+
+    load()
+    return () => { cancelled = true }
+  }, [user?.site])
+
   const knownEquipIds = equipmentList.map(e => e.id)
+  const equipIds      = [...new Set(arrets.map(a => a.equipId))]
 
-  // Équipements uniques détectés dans les arrêts
-  const equipIds = [...new Set(arrets.map(a => a.equipId))]
-
-  // Équipements en alerte N2 OU sous surveillance N1
   const alertEquips = equipIds.filter(id => {
     const cumulN2 = calcCumul(arrets, id, seuils.n2.horizon)
     const freqN2  = calcFrequence(arrets, id, seuils.n2.horizon)
@@ -118,22 +111,60 @@ export default function useTUM() {
     return getStatut(cumulN1, freqN1, seuils) === 'watch'
   })
 
-  // Ajouter des arrêts (import Excel ou saisie manuelle)
-  const ajouterArrets = useCallback((nouveaux) => {
-    setArrets(prev => [...prev, ...nouveaux])
-  }, [])
+  // Ajouter arrêts (import Excel ou saisie manuelle)
+  const ajouterArrets = useCallback(async (nouveaux) => {
+    if (!user) return
+    const { data: profile } = await supabase
+      .from('profiles').select('site_id').eq('id', user.id).single()
 
-  const supprimerArret = useCallback((id) => {
+    const rows = nouveaux.map(a => ({
+      equip_id:   a.equipId,
+      site_id:    profile?.site_id,
+      start_time: a.startTime,
+      duration:   a.duration || 0,
+      cause:      a.cause || null,
+      zone:       a.zone  || null,
+      created_by: user.id,
+    }))
+
+    const { data, error } = await supabase.from('arrets').insert(rows).select()
+    if (!error && data) setArrets(prev => [...data.map(rowToArret), ...prev])
+  }, [user])
+
+  const supprimerArret = useCallback(async (id) => {
+    await supabase.from('arrets').delete().eq('id', id)
     setArrets(prev => prev.filter(a => a.id !== id))
   }, [])
 
-  const sauvegarderSeuils = useCallback((nouveauxSeuils) => {
+  const sauvegarderSeuils = useCallback(async (nouveauxSeuils) => {
     setSeuils(nouveauxSeuils)
-  }, [])
+    if (!seuilsId) return
+    await supabase.from('seuils').update({
+      n1_cumul:      nouveauxSeuils.n1.cumul,
+      n1_frequence:  nouveauxSeuils.n1.frequence,
+      n1_horizon:    nouveauxSeuils.n1.horizon,
+      n2_cumul:      nouveauxSeuils.n2.cumul,
+      n2_frequence:  nouveauxSeuils.n2.frequence,
+      n2_horizon:    nouveauxSeuils.n2.horizon,
+    }).eq('id', seuilsId)
+  }, [seuilsId])
 
-  const updateEquipmentList = useCallback((list) => {
+  const updateEquipmentList = useCallback(async (list) => {
     setEquipmentList(list)
-  }, [])
+    if (!user) return
+    const { data: profile } = await supabase
+      .from('profiles').select('site_id').eq('id', user.id).single()
+
+    for (const e of list) {
+      await supabase.from('equipements').upsert({
+        id:      e.id,
+        nom:     e.nom || e.id,
+        site_id: profile?.site_id,
+        zone:    e.zone || null,
+        poste:   e.poste || null,
+      })
+    }
+  }, [user])
 
   return {
     arrets,
@@ -142,6 +173,7 @@ export default function useTUM() {
     equipmentList,
     knownEquipIds,
     alertEquips,
+    loading,
     ajouterArrets,
     supprimerArret,
     sauvegarderSeuils,
