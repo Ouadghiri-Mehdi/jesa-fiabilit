@@ -1,9 +1,9 @@
 // src/hooks/useRCASessions.js
 import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
 import { useAuth } from '../auth/AuthContext'
+import { api } from '../lib/api'
 
-// Convertit une ligne Supabase → format app
+// Convertit une ligne API → format app
 function rowToSession(row) {
   return {
     id:               row.id,
@@ -18,6 +18,7 @@ function rowToSession(row) {
     phenomene:        row.phenomene       || '',
     causeArret:       row.cause_arret     || '',
     dateOuverture:    row.date_ouverture  || row.created_at?.slice(0, 10) || '',
+    dateHeureDebut:   row.date_heure_debut || null,
     dateHeureFin:     row.date_heure_fin  || null,
     cumulArret:       row.cumul_arret     ?? 0,
     frequence:        row.frequence       ?? 0,
@@ -26,98 +27,99 @@ function rowToSession(row) {
     participants:     row.participants    || [],
     noeuds:           row.noeuds         || [],
     actionsGenerees:  row.actions_generees || [],
-    _siteId:          row.site_id,
   }
 }
 
-// Convertit format app → ligne Supabase
-function sessionToRow(s, siteId, userId) {
+// Convertit format app → body API
+function sessionToBody(s) {
   return {
-    id:               s.id,
-    titre:            s.titre           || s.equipId || 'Sans titre',
-    methode:          s.methode         || null,
-    statut:           s.statut          || 'non-commencee',
-    equip_id:         s.equipId         || null,
-    niveau:           s.niveau          ?? 2,
-    source:           s.source          || 'Manuel',
-    responsable:      s.responsable     || null,
-    zone:             s.zone            || null,
-    phenomene:        s.phenomene       || null,
-    cause_arret:      s.causeArret      || null,
-    date_ouverture:   s.dateOuverture   || new Date().toISOString().slice(0, 10),
-    date_heure_fin:   s.dateHeureFin    || null,
-    cumul_arret:      s.cumulArret      ?? 0,
-    frequence:        s.frequence       ?? 0,
-    taux_panne:       s.tauxPanne       ?? 0,
-    disponibilite:    s.disponibilite   ?? 100,
-    participants:     s.participants    || [],
-    noeuds:           s.noeuds         || [],
-    actions_generees: s.actionsGenerees || [],
-    site_id:          siteId,
-    created_by:       userId,
-    updated_at:       new Date().toISOString(),
+    id:                s.id,
+    titre:             s.titre           || s.equipId || 'Sans titre',
+    methode:           s.methode         || null,
+    statut:            s.statut          || 'non-commencee',
+    equip_id:          s.equipId         || null,
+    niveau:            s.niveau          ?? 2,
+    source:            s.source          || 'Manuel',
+    responsable:       s.responsable     || null,
+    zone:              s.zone            || null,
+    phenomene:         s.phenomene       || null,
+    cause_arret:       s.causeArret      || null,
+    date_ouverture:    s.dateOuverture   || new Date().toISOString().slice(0, 10),
+    date_heure_debut:  s.dateHeureDebut  || null,
+    date_heure_fin:    s.dateHeureFin    || null,
+    cumul_arret:       s.cumulArret      ?? 0,
+    frequence:         s.frequence       ?? 0,
+    taux_panne:        s.tauxPanne       ?? 0,
+    disponibilite:     s.disponibilite   ?? 100,
+    participants:      s.participants    || [],
+    noeuds:            s.noeuds         || [],
+    actions_generees:  s.actionsGenerees || [],
   }
 }
 
 export default function useRCASessions() {
   const { user } = useAuth()
-  const siteId = user?.siteId || null
-  const [sessions,  setSessions]  = useState([])
-  const [loading,   setLoading]   = useState(true)
+  const [sessions, setSessions] = useState([])
+  const [loading,  setLoading]  = useState(true)
 
-  // Charger les sessions depuis Supabase
+  // Charger les sessions depuis l'API
   useEffect(() => {
-    if (!siteId) return
+    if (!user?.id) return
     let cancelled = false
 
     async function load() {
       setLoading(true)
-      const { data } = await supabase
-        .from('rca_sessions')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (!cancelled) {
-        if (data) setSessions(data.map(rowToSession))
-        setLoading(false)
+      try {
+        const data = await api.get('/api/rca/sessions')
+        if (!cancelled && Array.isArray(data)) setSessions(data.map(rowToSession))
+      } catch (e) {
+        console.error('useRCASessions load error:', e.message)
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
 
     load()
     return () => { cancelled = true }
-  }, [siteId])
+  }, [user?.id])
 
   // Créer une session
   const createSession = useCallback(async (s) => {
     if (!user?.id) return null
-    const sid = user.siteId
-    if (!sid) { console.error('createSession: siteId manquant'); return null }
-    const row = sessionToRow(s, sid, user.id)
-    const { data, error } = await supabase
-      .from('rca_sessions').insert(row).select().single()
-    if (error) { console.error('createSession error:', error.message); return null }
-    const session = rowToSession(data)
-    setSessions(prev => [session, ...prev])
-    return session
+    try {
+      const data = await api.post('/api/rca/sessions', sessionToBody(s))
+      if (!data?.id) return null
+      const session = rowToSession(data)
+      setSessions(prev => [session, ...prev])
+      return session
+    } catch (e) {
+      console.error('createSession error:', e.message)
+      return null
+    }
   }, [user])
 
   // Mettre à jour une session
   const updateSession = useCallback(async (u) => {
     if (!user?.id) return u
-    const sid = user.siteId
-    const row = sessionToRow(u, sid, user.id)
-    const { data, error } = await supabase
-      .from('rca_sessions').update(row).eq('id', u.id).select().single()
-    if (error) console.error('updateSession error:', error.message)
-    const updated = data ? rowToSession(data) : u
-    setSessions(prev => prev.map(s => s.id === u.id ? updated : s))
-    return updated
+    try {
+      const data = await api.put(`/api/rca/sessions/${u.id}`, sessionToBody(u))
+      const updated = data?.id ? rowToSession(data) : u
+      setSessions(prev => prev.map(s => s.id === u.id ? updated : s))
+      return updated
+    } catch (e) {
+      console.error('updateSession error:', e.message)
+      return u
+    }
   }, [user])
 
   // Supprimer une session
   const deleteSession = useCallback(async (id) => {
-    await supabase.from('rca_sessions').delete().eq('id', id)
-    setSessions(prev => prev.filter(s => s.id !== id))
+    try {
+      await api.delete(`/api/rca/sessions/${id}`)
+      setSessions(prev => prev.filter(s => s.id !== id))
+    } catch (e) {
+      console.error('deleteSession error:', e.message)
+    }
   }, [])
 
   return { sessions, setSessions, loading, createSession, updateSession, deleteSession }

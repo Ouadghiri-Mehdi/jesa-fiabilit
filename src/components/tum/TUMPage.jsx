@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import C from '../../tokens/colors'
-import { calcCumul, calcFrequence, getStatut } from '../../hooks/useTUM'
 import { useTUMContext } from '../layout/Layout'
 import useNotifs from '../../hooks/useNotifs'
 import AlertBanner from '../shared/AlertBanner'
@@ -11,67 +10,10 @@ import ImportExcel from './ImportExcel'
 import SaisieManuelle from './SaisieManuelle'
 import BadActors from './BadActors'
 import SeuilsModal from './SeuilsModal'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../auth/AuthContext'
-
-// ─── Synchronise les équipements en alerte vers les sessions RCA (Supabase) ──
-async function syncAlertsToRCA(updatedArrets, nouveauxArrets, seuils, siteId, userId) {
-  if (!siteId || !userId) return
-  const affectedIds = [...new Set(nouveauxArrets.map(a => a.equipId))]
-  if (!affectedIds.length) return
-
-  // Récupérer sessions actives depuis Supabase
-  const { data: sessions } = await supabase
-    .from('rca_sessions')
-    .select('id, equip_id, cause_arret, statut')
-    .eq('site_id', siteId)
-    .neq('statut', 'cloturee')
-
-  for (const equipId of affectedIds) {
-    const trigger = nouveauxArrets.find(a => a.equipId === equipId)
-      || updatedArrets.filter(a => a.equipId === equipId).slice(-1)[0]
-
-    const existing = sessions?.find(s => s.equip_id === equipId)
-    if (existing) {
-      if (!existing.cause_arret && trigger?.cause) {
-        await supabase.from('rca_sessions')
-          .update({ cause_arret: trigger.cause })
-          .eq('id', existing.id)
-      }
-      continue
-    }
-
-    const cumulN2 = calcCumul(updatedArrets, equipId, seuils.n2.horizon)
-    const freqN2  = calcFrequence(updatedArrets, equipId, seuils.n2.horizon)
-    const isAlert = getStatut(cumulN2, freqN2, seuils) === 'alert'
-    const cumulN1 = calcCumul(updatedArrets, equipId, seuils.n1.horizon)
-    const freqN1  = calcFrequence(updatedArrets, equipId, seuils.n1.horizon)
-    const isWatch = getStatut(cumulN1, freqN1, seuils) === 'watch'
-    if (!isAlert && !isWatch) continue
-
-    const niveau = isAlert ? 2 : 1
-    const today  = new Date().toISOString().slice(0, 10)
-    const id     = `RCA-${today.replace(/-/g, '')}-${Math.floor(Math.random() * 900 + 100)}`
-
-    await supabase.from('rca_sessions').insert({
-      id, equip_id: equipId, zone: trigger?.zone || '',
-      date_ouverture: today, niveau, source: 'TUM',
-      responsable: '', cumul_arret: isAlert ? cumulN2 : cumulN1,
-      frequence: isAlert ? freqN2 : freqN1,
-      participants: [], statut: 'non-commencee',
-      methode: niveau === 2 ? '5why' : 'kaizen',
-      phenomene: trigger?.description || trigger?.cause || '',
-      cause_arret: trigger?.cause || '',
-      noeuds: [], actions_generees: [],
-      site_id: siteId, created_by: userId,
-    })
-  }
-}
 
 export default function TUMPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user } = useAuth()
   const { notifs, showNotif, dismissNotif } = useNotifs()
   const {
     arrets, seuils, alertEquips,
@@ -104,16 +46,12 @@ export default function TUMPage() {
   }
 
   const handleImport = (nouveaux) => {
-    const updatedArrets = [...arrets, ...nouveaux]
     ajouterArrets(nouveaux)
-    syncAlertsToRCA(updatedArrets, nouveaux, seuils, user?.siteId, user?.id)
     showNotif('✅ Import réussi', `${nouveaux.length} arrêt(s) importé(s) dans le TUM`, 'green')
   }
 
   const handleSaisie = (arret) => {
-    const updatedArrets = [...arrets, arret]
     ajouterArrets([arret])
-    syncAlertsToRCA(updatedArrets, [arret], seuils, user?.siteId, user?.id)
     showNotif('✅ Arrêt enregistré', `${arret.equipId} · ${arret.duration}h archivé`, 'blue')
     setShowSaisieInline(false)
   }
