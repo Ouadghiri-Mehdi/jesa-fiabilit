@@ -113,13 +113,10 @@ export default function useTUM() {
 
   // Ajouter arrêts (import Excel ou saisie manuelle)
   const ajouterArrets = useCallback(async (nouveaux) => {
-    if (!user) return
-    const { data: profile } = await supabase
-      .from('profiles').select('site_id').eq('id', user.id).single()
-
+    if (!user?.siteId) return
     const rows = nouveaux.map(a => ({
       equip_id:   a.equipId,
-      site_id:    profile?.site_id,
+      site_id:    user.siteId,
       start_time: a.startTime,
       duration:   a.duration || 0,
       cause:      a.cause || null,
@@ -151,15 +148,12 @@ export default function useTUM() {
 
   const updateEquipmentList = useCallback(async (list) => {
     setEquipmentList(list)
-    if (!user) return
-    const { data: profile } = await supabase
-      .from('profiles').select('site_id').eq('id', user.id).single()
-
+    if (!user?.siteId) return
     for (const e of list) {
       await supabase.from('equipements').upsert({
         id:      e.id,
         nom:     e.nom || e.id,
-        site_id: profile?.site_id,
+        site_id: user.siteId,
         zone:    e.zone || null,
         poste:   e.poste || null,
       })
