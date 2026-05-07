@@ -1,6 +1,7 @@
 // src/components/actions/ActionsPage.jsx
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import C from '../../tokens/colors'
+import { useRCAContext } from '../layout/Layout'
 
 const STATUT_CFG = {
   'pas-commence': { label: 'Non commencé', bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
@@ -199,21 +200,11 @@ function EquipGroup({ equipId, actions, onStatusChange, collapsed, onToggle }) {
 }
 
 export default function ActionsPage() {
-  const [sessions, setSessions] = useState(() => readLS('jesa_rca_sessions', []))
+  const { sessions, updateSession } = useRCAContext() || { sessions: [], updateSession: async () => {} }
   const [search,     setSearch]     = useState('')
   const [filtStatut, setFiltStatut] = useState('')
   const [filtEquip,  setFiltEquip]  = useState('')
   const [collapsed,  setCollapsed]  = useState({})
-
-  useEffect(() => {
-    const handle = e => {
-      if (e.key === 'jesa_rca_sessions' && e.newValue) {
-        try { setSessions(JSON.parse(e.newValue)) } catch {}
-      }
-    }
-    window.addEventListener('storage', handle)
-    return () => window.removeEventListener('storage', handle)
-  }, [])
 
   const allActions = useMemo(() => {
     const result = []
@@ -260,12 +251,15 @@ export default function ActionsPage() {
   const txReal    = total ? Math.round((cloturees / total) * 100) : 0
 
   const handleStatusChange = (sessionId, actionId, newStatut) => {
-    const updated = sessions.map(s => {
-      if (s.id !== sessionId) return s
-      return { ...s, actionsGenerees: (s.actionsGenerees || []).map(a => a.id === actionId ? { ...a, statut: newStatut } : a) }
-    })
-    setSessions(updated)
-    saveLS('jesa_rca_sessions', updated)
+    const session = sessions.find(s => s.id === sessionId)
+    if (!session) return
+    const updated = {
+      ...session,
+      actionsGenerees: (session.actionsGenerees || []).map(a =>
+        a.id === actionId ? { ...a, statut: newStatut } : a
+      )
+    }
+    updateSession(updated)
   }
 
   const toggleGroup = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))
