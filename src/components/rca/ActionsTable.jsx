@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import C from '../../tokens/colors'
-import { getParticipants } from '../../data/participants'
+import { api } from '../../lib/api'
 
 const STATUT_ACTION = {
   'pas-commence': { label: 'Non commencé', bg: '#fef2f2', color: '#dc2626', border: '#fecaca', dot: '#dc2626' },
@@ -260,7 +260,7 @@ function ParticipantPicker({ participants = [], value, onSelect, avatarColor, on
 }
 
 // ── Composant principal ──────────────────────────────────────────────────────
-export default function ActionsTable({ actions, onChange, participants = [], onAddParticipant }) {
+export default function ActionsTable({ actions, onChange, participants = [], onAddParticipant, rcaStartDate }) {
   const [rows, setRows] = useState(() => actions.map(r => ({ ...r })))
   const [showPartPicker, setShowPartPicker] = useState(false)
   const [allParticipants, setAllParticipants] = useState([])
@@ -268,7 +268,9 @@ export default function ActionsTable({ actions, onChange, participants = [], onA
   const partDropRef = useRef(null)
 
   useEffect(() => {
-    setAllParticipants(getParticipants())
+    api.getParticipants()
+      .then(list => setAllParticipants(list.map(p => ({ id: String(p.id), nom: p.nom, fonction: p.fonction || '' }))))
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -303,12 +305,18 @@ export default function ActionsTable({ actions, onChange, participants = [], onA
     setRows(next); onChange(next)
   }
 
+  const rcaDay = rcaStartDate ? rcaStartDate.slice(0, 10) : null
+  const isDelaiDepasse = (row) => {
+    if (row.statut === 'cloture' || !row.delai) return false
+    if (!rcaDay) return false
+    return row.delai !== rcaDay
+  }
   const counts = {
     total:      rows.length,
     notStarted: rows.filter(r => r.statut === 'pas-commence').length,
     inProgress: rows.filter(r => r.statut === 'en-cours').length,
     done:       rows.filter(r => r.statut === 'cloture').length,
-    retard:     rows.filter(r => r.statut === 'retard' || (r.statut !== 'cloture' && r.delai && new Date(r.delai) < new Date())).length,
+    retard:     rows.filter(r => r.statut === 'retard' || isDelaiDepasse(r)).length,
   }
 
   const BADGES = [
@@ -352,8 +360,7 @@ export default function ActionsTable({ actions, onChange, participants = [], onA
         </div>
 
         {/* Bouton ajouter participant */}
-        {allParticipants.length > 0 && (
-          <div style={{ position: 'relative', flexShrink: 0 }}>
+        <div style={{ position: 'relative', flexShrink: 0 }}>
             <button
               ref={partBtnRef}
               onClick={() => setShowPartPicker(v => !v)}
@@ -467,7 +474,6 @@ export default function ActionsTable({ actions, onChange, participants = [], onA
               </div>
             )}
           </div>
-        )}
       </div>
 
       {/* ── Tableau ── */}
@@ -522,7 +528,7 @@ export default function ActionsTable({ actions, onChange, participants = [], onA
                   const sc       = STATUT_ACTION[row.statut] || STATUT_ACTION['pas-commence']
                   const avatarC  = AVATAR_COLORS[idx % AVATAR_COLORS.length]
                   const isLast   = idx === rows.length - 1
-                  const isOverdue = row.delai && new Date(row.delai) < new Date() && row.statut !== 'cloture'
+                  const isOverdue = isDelaiDepasse(row)
 
                   const cell = (extra = {}) => ({
                     padding: '12px 14px',

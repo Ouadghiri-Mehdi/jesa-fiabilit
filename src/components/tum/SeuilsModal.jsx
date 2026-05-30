@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx'
 import C from '../../tokens/colors'
 import Modal from '../shared/Modal'
 import Button from '../shared/Button'
-import { getParticipants, saveParticipants, DEFAULT_PARTICIPANTS } from '../../data/participants'
+import { api } from '../../lib/api'
 
 const inputStyle = {
   width: '100%',
@@ -161,7 +161,7 @@ function validateColumns(headers, rules) {
   return { missing, found, isValid: missing.length === 0 }
 }
 
-export default function SeuilsModal({ seuils, onClose, onSave, showNotif, onUpdateEquipmentList }) {
+export default function SeuilsModal({ seuils, onClose, onSave, showNotif, onUpdateEquipmentList, onUpdateCausesList }) {
   const [activeTab, setActiveTab] = useState('seuils')
   const [confirmModal, setConfirmModal] = useState(null) // { action, label, count }
   const [columnErrorModal, setColumnErrorModal] = useState(null) // { tab, missing, found, headers }
@@ -177,35 +177,30 @@ export default function SeuilsModal({ seuils, onClose, onSave, showNotif, onUpda
   const [loading, setLoading] = useState(false)
   const fileRef = useRef()
 
-  const [causesList, setCausesList] = useState(() => {
-    if (typeof window === 'undefined') return CAUSES_ARRET_DEFAUT
-    try {
-      const stored = window.localStorage.getItem('jesa_causes_list')
-      return stored ? JSON.parse(stored) : CAUSES_ARRET_DEFAUT
-    } catch {
-      return CAUSES_ARRET_DEFAUT
-    }
-  })
+  const [causesList, setCausesList] = useState(CAUSES_ARRET_DEFAUT)
   const [causesPreview, setCausesPreview] = useState([])
-  const [causesFileName, setCausesFileName] = useState(() => localStorage.getItem('jesa_causes_fileName') || '')
+  const [causesFileName, setCausesFileName] = useState('')
   const [isLoadingCauses, setIsLoadingCauses] = useState(false)
   const fileCausesRef = useRef()
 
   // ── Participants state ──
-  const [participants, setParticipants] = useState(() => getParticipants())
+  const [participants, setParticipants] = useState([])
   const [participantsPreview, setParticipantsPreview] = useState(null)
-  const [participantsFileName, setParticipantsFileName] = useState(() => localStorage.getItem('jesa_participants_fileName') || '')
+  const [participantsFileName, setParticipantsFileName] = useState('')
   const [isLoadingParticipants, setIsLoadingParticipants] = useState(false)
   const fileParticipantsRef = useRef()
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem('jesa_causes_list', JSON.stringify(causesList))
-  }, [causesList])
-
+  // ── Chargement depuis l'API au montage ──
   useEffect(() => {
     loadSheetJS().catch(() => {})
+    api.getCausesConfig()
+      .then(rows => { if (rows.length) setCausesList(rows.map(r => r.libelle)) })
+      .catch(() => {})
+    api.getParticipants()
+      .then(rows => setParticipants(rows.map(p => ({ id: String(p.id), nom: p.nom, fonction: p.fonction || '' }))))
+      .catch(() => {})
   }, [])
+
 
   const findKey = (headers, keywords) =>
     headers.find((h) => keywords.some((k) => h.toLowerCase().includes(k.toLowerCase())))
@@ -310,9 +305,17 @@ export default function SeuilsModal({ seuils, onClose, onSave, showNotif, onUpda
       showNotif('❌ Aucun poste', 'Vérifiez la colonne "Poste technique"', 'red')
       return
     }
-    localStorage.setItem('jesa_postes_techniques', JSON.stringify(newList))
-    if (equipPreview?.fileName) localStorage.setItem('jesa_postes_fileName', equipPreview.fileName)
-    showNotif('✅ Liste mise à jour', `${newList.length} poste(s) technique(s) chargé(s)`, 'green')
+    api.bulkEquipements(newList.map(e => ({
+      id:          e.id,
+      designation: e.designation,
+      entite:      e.niveau  ? String(e.niveau) : null,   // Niveau → entite
+      famille:     e.eqSeq   || null,                     // EQ/SEQ → famille
+    })))
+      .then(res => {
+        showNotif('✅ Liste mise à jour', `${Array.isArray(res) ? res.length : newList.length} équipement(s) enregistré(s)`, 'green')
+        if (onUpdateEquipmentList) onUpdateEquipmentList()
+      })
+      .catch(err => showNotif('❌ Erreur', err.message, 'red'))
     setEquipPreview(null)
   }
 
@@ -327,19 +330,16 @@ export default function SeuilsModal({ seuils, onClose, onSave, showNotif, onUpda
   }
 
   const downloadEquipTemplate = () => {
-    let postes = []
-    try {
-      const stored = localStorage.getItem('jesa_postes_techniques')
-      postes = stored ? JSON.parse(stored) : []
-    } catch { postes = [] }
-    // Build rows: header at row 1, data starts row 2 (matching original import format)
-    const rows = [['Poste technique', 'Désignation du poste technique', 'Niveay', 'EQ/SEQ']]
-    postes.forEach(p => rows.push([p.id || '', p.designation || '', p.niveau || '', p.eqSeq || '']))
-    const wb = XLSX.utils.book_new()
-    const ws = XLSX.utils.aoa_to_sheet(rows)
-    XLSX.utils.book_append_sheet(wb, ws, 'Postes_Techniques')
-    const storedFileName = localStorage.getItem('jesa_postes_fileName') || 'DATA_POSTES_TECHNIQUES'
-    XLSX.writeFile(wb, storedFileName.replace(/\.xlsx?$/i, '') + '.xlsx')
+    api.getEquipements()
+      .then(equips => {
+        const rows = [['Poste technique', 'Désignation du poste technique', 'Niveau', 'EQ/SEQ']]
+        equips.forEach(e => rows.push([e.id || '', e.designation || '', e.entite || '', e.famille || '']))
+        const wb = XLSX.utils.book_new()
+        const ws = XLSX.utils.aoa_to_sheet(rows)
+        XLSX.utils.book_append_sheet(wb, ws, 'Postes_Techniques')
+        XLSX.writeFile(wb, 'DATA_POSTES_TECHNIQUES.xlsx')
+      })
+      .catch(() => showNotif('❌ Erreur', 'Impossible de récupérer la liste', 'red'))
   }
 
   const handleCausesFile = useCallback(
@@ -424,25 +424,23 @@ export default function SeuilsModal({ seuils, onClose, onSave, showNotif, onUpda
 
   const importCausesList = () => {
     if (causesPreview.length === 0) return
-    setCausesList(causesPreview)
-    if (causesFileName) localStorage.setItem('jesa_causes_fileName', causesFileName)
-    showNotif('✅ Liste des causes mise à jour', `${causesPreview.length} cause(s) enregistrée(s)`, 'green')
-    setCausesPreview([])
+    api.bulkCauses(causesPreview)
+      .then(() => {
+        setCausesList(causesPreview)
+        if (onUpdateCausesList) onUpdateCausesList()
+        showNotif('✅ Liste des causes mise à jour', `${causesPreview.length} cause(s) enregistrée(s)`, 'green')
+        setCausesPreview([])
+      })
+      .catch(err => showNotif('❌ Erreur', err.message, 'red'))
   }
 
   const downloadCausesTemplate = () => {
-    let causes = []
-    try {
-      const stored = localStorage.getItem('jesa_causes_list')
-      causes = stored ? JSON.parse(stored) : CAUSES_ARRET_DEFAUT
-    } catch { causes = CAUSES_ARRET_DEFAUT }
     const rows = [["Cause d'arrêt"]]
-    causes.forEach(c => rows.push([c, '']))
+    causesList.forEach(c => rows.push([c]))
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.aoa_to_sheet(rows)
     XLSX.utils.book_append_sheet(wb, ws, 'Causes_Arret')
-    const storedFileName = causesFileName || localStorage.getItem('jesa_causes_fileName') || 'DATA_CAUSES_ARRET'
-    XLSX.writeFile(wb, storedFileName.replace(/\.xlsx?$/i, '') + '.xlsx')
+    XLSX.writeFile(wb, (causesFileName || 'DATA_CAUSES_ARRET').replace(/\.xlsx?$/i, '') + '.xlsx')
   }
 
   // ── Participants handlers ──
@@ -495,38 +493,35 @@ export default function SeuilsModal({ seuils, onClose, onSave, showNotif, onUpda
 
   const handleImportParticipants = () => {
     if (!participantsPreview) return
-    const newList = participantsPreview.rows.map((p, idx) => ({
-      id: `p-${Date.now()}-${idx}`, nom: p.nom, fonction: p.fonction || '',
-    }))
-    setParticipants(newList)
-    saveParticipants(newList)
-    if (participantsFileName) localStorage.setItem('jesa_participants_fileName', participantsFileName)
-    showNotif('✅ Liste mise à jour', `${newList.length} participant(s) importé(s)`, 'green')
-    setParticipantsPreview(null)
+    const newList = participantsPreview.rows.map(p => ({ nom: p.nom, fonction: p.fonction || '' }))
+    api.bulkParticipants(newList)
+      .then(() => api.getParticipants())
+      .then(rows => {
+        const mapped = rows.map(p => ({ id: String(p.id), nom: p.nom, fonction: p.fonction || '' }))
+        setParticipants(mapped)
+        showNotif('✅ Liste mise à jour', `${mapped.length} participant(s) importé(s)`, 'green')
+        setParticipantsPreview(null)
+      })
+      .catch(err => showNotif('❌ Erreur', err.message, 'red'))
   }
 
   const handleDeleteParticipant = (id) => {
-    const updated = participants.filter(p => p.id !== id)
-    setParticipants(updated)
-    saveParticipants(updated)
-    showNotif('✅ Participant supprimé', '', 'green')
-  }
-
-  const handleResetParticipants = () => {
-    setParticipants(DEFAULT_PARTICIPANTS)
-    saveParticipants(DEFAULT_PARTICIPANTS)
-    showNotif('✅ Liste réinitialisée', `${DEFAULT_PARTICIPANTS.length} participants par défaut`, 'green')
+    api.deleteParticipant(id)
+      .then(() => {
+        const updated = participants.filter(p => p.id !== id)
+        setParticipants(updated)
+        showNotif('✅ Participant supprimé', '', 'green')
+      })
+      .catch(err => showNotif('❌ Erreur', err.message, 'red'))
   }
 
   const downloadParticipantsTemplate = () => {
-    const parts = participants || []
     const rows = [['Nom du participant', 'Fonction']]
-    parts.forEach(p => rows.push([p.nom || p.name || '', p.fonction || p.role || '']))
+    participants.forEach(p => rows.push([p.nom || '', p.fonction || '']))
     const wb = XLSX.utils.book_new()
     const ws = XLSX.utils.aoa_to_sheet(rows)
     XLSX.utils.book_append_sheet(wb, ws, 'Participants')
-    const storedFileName = participantsFileName || localStorage.getItem('jesa_participants_fileName') || 'DATA_PARTICIPANTS'
-    XLSX.writeFile(wb, storedFileName.replace(/\.xlsx?$/i, '') + '.xlsx')
+    XLSX.writeFile(wb, (participantsFileName || 'DATA_PARTICIPANTS').replace(/\.xlsx?$/i, '') + '.xlsx')
   }
 
   const tabs = [

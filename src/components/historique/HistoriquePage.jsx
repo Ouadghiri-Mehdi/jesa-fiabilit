@@ -1,9 +1,9 @@
 // src/components/historique/HistoriquePage.jsx
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import C from '../../tokens/colors'
 import useTUM from '../../hooks/useTUM'
 import { getStatut } from '../../hooks/useTUM'
-import { POSTES_TECHNIQUES } from '../../data/postes_techniques'
+import { api } from '../../lib/api'
 
 const STATUT_RCA = {
   'en-cours':      { label: 'En cours',       bg: '#eef2f7', color: '#334155', border: '#d1dbe8', dot: '#334155' },
@@ -20,10 +20,6 @@ const STATUT_ACT = {
 const th = { padding: '10px 14px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: '#64748b', letterSpacing: '1px', textTransform: 'uppercase', borderBottom: '2px solid #e2e8f0', whiteSpace: 'nowrap', background: '#f8fafc' }
 const td = { padding: '11px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 13, color: '#334155' }
 
-function readLS(key, fallback) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback }
-  catch { return fallback }
-}
 
 function ProgressBar({ value, statut }) {
   const color = statut === 'cloturee' ? '#059669' : statut === 'retard' ? '#dc2626' : '#d97706'
@@ -97,17 +93,76 @@ function EquipCard({ equip, onSelect, stats, rcaCount }) {
   )
 }
 
-function DossierEquip({ equip, onBack, arrets }) {
+function FilePreviewModal({ pj, onClose }) {
+  if (!pj) return null
+  const url     = pj.url
+  const isImage = pj.type?.startsWith('image/')
+  const isPdf   = pj.type === 'application/pdf'
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.75)', zIndex:900, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div style={{ background:'#fff', borderRadius:12, width:'min(900px,96vw)', maxHeight:'90vh', display:'flex', flexDirection:'column', overflow:'hidden', boxShadow:'0 24px 64px rgba(0,0,0,.5)' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 18px', borderBottom:'1px solid #e2e8f0', flexShrink:0 }}>
+          <span style={{ fontSize:13, fontWeight:700, color:'#1e293b' }}>{pj.name}</span>
+          <div style={{ display:'flex', gap:8 }}>
+            {url && <a href={url} download={pj.name} target="_blank" rel="noreferrer" style={{ padding:'6px 14px', borderRadius:8, border:'1.5px solid #e2e8f0', background:'#f8fafc', fontSize:12, fontWeight:600, color:'#334155', textDecoration:'none' }}>⬇ Télécharger</a>}
+            <button onClick={onClose} style={{ padding:'6px 14px', borderRadius:8, border:'none', background:'#0b2e63', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer' }}>Fermer</button>
+          </div>
+        </div>
+        <div style={{ flex:1, overflow:'auto', background:'#f1f5f9', padding:16, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          {isImage && url && <img src={url} alt={pj.name} style={{ maxWidth:'100%', maxHeight:'70vh', objectFit:'contain', borderRadius:6 }} />}
+          {isPdf   && url && <iframe src={url} title={pj.name} style={{ width:'100%', height:'70vh', border:'none', borderRadius:6 }} />}
+          {!isImage && !isPdf && (
+            <div style={{ textAlign:'center', padding:40 }}>
+              <div style={{ fontSize:48, marginBottom:12 }}>📄</div>
+              <div style={{ fontSize:14, fontWeight:600, color:'#334155', marginBottom:16 }}>{pj.name}</div>
+              {url && <a href={url} download={pj.name} target="_blank" rel="noreferrer" style={{ padding:'10px 24px', borderRadius:25, background:'#0b2e63', color:'#fff', fontSize:13, fontWeight:700, textDecoration:'none', display:'inline-block' }}>⬇ Télécharger</a>}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DossierEquip({ equip, onBack, arrets, allSessions = [] }) {
   const [tab, setTab] = useState('tum')
   const [docs, setDocs] = useState([])
+  const [previewDoc, setPreviewDoc] = useState(null)
+  const [uploading, setUploading] = useState(false)
 
   const arretsEquip  = arrets.filter(a => a.equipId === equip.id)
     .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
   const cumulTotal   = arretsEquip.reduce((s, a) => s + (a.duration || 0), 0)
   const dernierArret = arretsEquip[0]
 
-  // RCA depuis localStorage
-  const rcaSessions = readLS('jesa_rca_sessions', []).filter(s => s.equipId === equip.id)
+  const rcaSessions = allSessions.filter(s => s.equipId === equip.id)
+
+  // PJ extraites automatiquement des sessions RCA (Quick Kaizen + 5-Why)
+  const pjFromRCA = rcaSessions.flatMap(s => {
+    const result = []
+
+    // Quick Kaizen — vérification rows
+    const rows = s.noeuds?.[0]?.kaizenWheelData?.check?.rows || []
+    rows.filter(r => r.pieceJointe?.url).forEach(r =>
+      result.push({ ...r.pieceJointe, source: s.id, cause: r.cause })
+    )
+
+    // 5-Why — parcours récursif des noeuds
+    const walkNodes = (nodes) => {
+      if (!nodes) return
+      nodes.forEach(n => {
+        const docs = n.docs || (n.doc ? [n.doc] : [])
+        docs.forEach(doc => {
+          if (doc?.url) result.push({ name: doc.name, url: doc.url, type: doc.type || '', source: s.id, cause: n.texte })
+        })
+        if (n.enfants?.length) walkNodes(n.enfants)
+      })
+    }
+    walkNodes(s.noeuds)
+
+    return result
+  })
 
   // Actions depuis actionsGenerees des sessions
   const actions = rcaSessions.flatMap(s =>
@@ -134,7 +189,6 @@ function DossierEquip({ equip, onBack, arrets }) {
 
       {/* Header navy */}
       <div style={{ background: '#1a3a6b', borderRadius: 12, padding: '20px 26px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-        <div style={{ width: 52, height: 52, borderRadius: 12, background: 'rgba(255,255,255,.15)', border: '1.5px solid rgba(255,255,255,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>⚙️</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: 17, color: '#fff', letterSpacing: '.4px' }}>{equip.id}</div>
           <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.78)', marginTop: 3 }}>{equip.designation || '—'}</div>
@@ -198,7 +252,7 @@ function DossierEquip({ equip, onBack, arrets }) {
                 ) : arretsEquip.map((a, i) => (
                   <tr key={i} onMouseOver={e => e.currentTarget.style.background = '#f8fafc'} onMouseOut={e => e.currentTarget.style.background = ''}>
                     <td style={td}>{new Date(a.startTime).toLocaleDateString('fr-FR')} {new Date(a.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
-                    <td style={td}>{a.endTime ? `${new Date(a.endTime).toLocaleDateString('fr-FR')} ${new Date(a.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : '—'}</td>
+                    <td style={td}>{(() => { const end = a.endTime ? new Date(a.endTime) : (a.startTime && a.duration ? new Date(new Date(a.startTime).getTime() + a.duration * 3600000) : null); return end ? `${end.toLocaleDateString('fr-FR')} ${end.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : '—' })()}</td>
                     <td style={{ ...td, fontWeight: 700, color: '#dc2626' }}>{a.duration?.toFixed(1)}h</td>
                     <td style={td}>{a.zone || '—'}</td>
                     <td style={td}>{a.cause || '—'}</td>
@@ -286,31 +340,89 @@ function DossierEquip({ equip, onBack, arrets }) {
       {/* Documents */}
       {tab === 'docs' && (
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '0 0 12px 12px', padding: 20 }}>
-          <label style={{ display: 'block', border: '2px dashed #cbd5e1', borderRadius: 8, padding: 20, textAlign: 'center', cursor: 'pointer', background: '#f8fafc', marginBottom: 16 }}
-            onMouseOver={e => e.currentTarget.style.borderColor = '#1a3a6b'}
-            onMouseOut={e => e.currentTarget.style.borderColor = '#cbd5e1'}>
+          {previewDoc && <FilePreviewModal pj={previewDoc} onClose={() => setPreviewDoc(null)} />}
+
+          {/* Drop zone upload direct */}
+          <label style={{ display: 'block', border: '2px dashed #cbd5e1', borderRadius: 8, padding: 20, textAlign: 'center', cursor: uploading ? 'wait' : 'pointer', background: '#f8fafc', marginBottom: 20, opacity: uploading ? .6 : 1 }}
+            onMouseOver={e => { if (!uploading) e.currentTarget.style.borderColor = '#0b2e63' }}
+            onMouseOut={e  => e.currentTarget.style.borderColor = '#cbd5e1'}>
             <div style={{ fontSize: 28, marginBottom: 8 }}>📎</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Déposer un document ou cliquer pour parcourir</div>
-            <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>Plans mécaniques · Schémas · PDF · Photos</div>
-            <input type="file" style={{ display: 'none' }} multiple accept=".pdf,.png,.jpg,.jpeg"
-              onChange={e => { if (e.target.files) setDocs(d => [...d, ...Array.from(e.target.files).map(f => ({ name: f.name, size: f.size, date: new Date().toLocaleDateString('fr-FR') }))]) }} />
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>{uploading ? 'Envoi en cours…' : 'Déposer un document ou cliquer pour parcourir'}</div>
+            <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 4 }}>Plans mécaniques · Schémas · PDF · Photos · Word · Excel</div>
+            <input type="file" style={{ display: 'none' }} multiple disabled={uploading}
+              accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.doc,.docx"
+              onChange={async e => {
+                const files = Array.from(e.target.files || [])
+                if (!files.length) return
+                setUploading(true)
+                try {
+                  const uploaded = await Promise.all(files.map(f => api.uploadFile(f)))
+                  setDocs(d => [...d, ...uploaded.map(u => ({ ...u, uploadedAt: new Date().toLocaleDateString('fr-FR'), source: 'direct' }))])
+                } catch (err) {
+                  alert('Erreur upload : ' + err.message)
+                } finally {
+                  setUploading(false)
+                  e.target.value = null
+                }
+              }} />
           </label>
-          {docs.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: 13 }}>Aucun document archivé</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {docs.map((d, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: 18 }}>📄</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>{d.name}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{d.date} · {(d.size / 1024).toFixed(1)} KB</div>
+
+          {/* PJ depuis RCA */}
+          {pjFromRCA.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 3, height: 14, background: '#0b2e63', borderRadius: 2 }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#0b2e63', textTransform: 'uppercase', letterSpacing: '.8px' }}>Pièces jointes — Analyses RCA</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {pjFromRCA.map((d, i) => (
+                  <div key={i} onClick={() => setPreviewDoc(d)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#f0f9ff', borderRadius: 8, border: '1px solid #bae6fd', cursor: 'pointer', transition: 'background .12s' }}
+                    onMouseOver={e => e.currentTarget.style.background = '#e0f2fe'}
+                    onMouseOut={e  => e.currentTarget.style.background = '#f0f9ff'}>
+                    <span style={{ fontSize: 20 }}>📄</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0369a1', textDecoration: 'underline', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
+                      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                        <span style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 4, padding: '1px 6px', fontWeight: 600, fontSize: 10, marginRight: 6 }}>RCA</span>
+                        {d.source}
+                        {d.cause && <span style={{ marginLeft: 8, color: '#94a3b8' }}>· Cause : {d.cause}</span>}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>Voir →</span>
                   </div>
-                  <button onClick={() => setDocs(ds => ds.filter((_, j) => j !== i))}
-                    style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 18 }}>×</button>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
+          )}
+
+          {/* Uploads directs */}
+          {docs.length > 0 && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ width: 3, height: 14, background: '#64748b', borderRadius: 2 }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.8px' }}>Documents ajoutés manuellement</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {docs.map((d, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                    <span onClick={() => setPreviewDoc(d)} style={{ fontSize: 20, cursor: 'pointer' }}>📄</span>
+                    <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setPreviewDoc(d)}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', textDecoration: 'underline', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{d.uploadedAt}</div>
+                    </div>
+                    <button onClick={() => setDocs(ds => ds.filter((_, j) => j !== i))}
+                      style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
+                      onMouseOver={e => e.currentTarget.style.color = '#dc2626'}
+                      onMouseOut={e  => e.currentTarget.style.color = '#cbd5e1'}>×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {pjFromRCA.length === 0 && docs.length === 0 && (
+            <div style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: 13 }}>Aucun document archivé</div>
           )}
         </div>
       )}
@@ -319,13 +431,17 @@ function DossierEquip({ equip, onBack, arrets }) {
 }
 
 export default function HistoriquePage() {
-  const { arrets, seuils } = useTUM()
+  const { arrets, seuils, equipmentList } = useTUM()
   const [search, setSearch]     = useState('')
   const [filtEqSeq, setFiltEqSeq] = useState('')
   const [selected, setSelected] = useState(null)
+  const [allSessions, setAllSessions] = useState([])
 
-  // Source de vérité : localStorage d'abord, fallback hardcodé
-  const knownPostesList = useMemo(() => readLS('jesa_postes_techniques', POSTES_TECHNIQUES), [])
+  useEffect(() => {
+    api.getSessions().then(setAllSessions).catch(() => {})
+  }, [])
+
+  const knownPostesList = equipmentList
 
   // Stats par équipement
   const equipStats = useMemo(() => {
@@ -343,11 +459,10 @@ export default function HistoriquePage() {
 
   // Compte des sessions RCA par équipement
   const rcaCountMap = useMemo(() => {
-    const sessions = readLS('jesa_rca_sessions', [])
     const map = {}
-    sessions.forEach(s => { map[s.equipId] = (map[s.equipId] || 0) + 1 })
+    allSessions.forEach(s => { map[s.equipId] = (map[s.equipId] || 0) + 1 })
     return map
-  }, [])
+  }, [allSessions])
 
   // Valeurs uniques pour le filtre EQ/SEQ
   const eqSeqOptions = useMemo(() => [...new Set(knownPostesList.map(p => p.eqSeq).filter(Boolean))], [knownPostesList])
@@ -363,7 +478,7 @@ export default function HistoriquePage() {
   }, [search, filtEqSeq, knownPostesList])
 
   if (selected) {
-    return <DossierEquip equip={selected} onBack={() => setSelected(null)} arrets={arrets} />
+    return <DossierEquip equip={selected} onBack={() => setSelected(null)} arrets={arrets} allSessions={allSessions} />
   }
 
   const totalCumul      = arrets.reduce((s, a) => s + (a.duration || 0), 0)

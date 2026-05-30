@@ -112,17 +112,12 @@ const PREVIEW_COL_DEFS = [
   { label: 'Description',                    keywords: ['description', 'desc', 'commentaire', 'détails'] },
 ]
 
-export default function ImportExcel({ onImport, showNotif, onFileLoaded }) {
+export default function ImportExcel({ onImport, showNotif, onFileLoaded, equipmentList = [] }) {
   const [preview, setPreview]   = useState(null)
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading]   = useState(false)
   const fileRef = useRef()
-  const knownPostesList = (() => {
-    try {
-      const stored = localStorage.getItem('jesa_postes_techniques')
-      return stored ? JSON.parse(stored) : POSTES_TECHNIQUES
-    } catch { return POSTES_TECHNIQUES }
-  })()
+  const knownPostesList = equipmentList.length > 0 ? equipmentList : POSTES_TECHNIQUES
 
   useEffect(() => { loadSheetJS().catch(() => {}) }, [])
 

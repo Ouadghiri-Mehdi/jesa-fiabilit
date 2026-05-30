@@ -1,7 +1,11 @@
 // src/components/rca/RCAList.jsx
-import { useState, useMemo } from 'react'
+// 🔥 CORRECTION : Ne montrer que les RCA liées à des sessions OPEN
+// ou les RCA clôturées dans l'historique
+
+import { useState, useMemo, useEffect } from 'react'
 import C from '../../tokens/colors'
-import { getParticipants } from '../../data/participants'
+import { api } from '../../lib/api'
+import { useAuth } from '../../auth/AuthContext'
 
 const STATUT_CFG = {
   'non-commencee': { label: 'Non commencée', bg: '#fef2f2', color: '#dc2626', border: '#fecaca', dot: '#dc2626' },
@@ -76,9 +80,18 @@ function ChoixMethodePopup({ session, onChoisir, onClose }) {
 }
 
 // ─── Popup choix participants (exporté — utilisé aussi dans RCAPage) ──────────
-export function ChoixParticipantsPopup({ session, onChoisir, onClose }) {
-  const [selectedParticipants, setSelectedParticipants] = useState([])
-  const participants = getParticipants()
+export function ChoixParticipantsPopup({ session, onChoisir, onClose, currentUser }) {
+  const selfPart = currentUser
+    ? { id: `user-${currentUser.id}`, nom: `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim() || currentUser.username, fonction: currentUser.role || '' }
+    : null
+
+  const [selectedParticipants, setSelectedParticipants] = useState(() => selfPart ? [selfPart] : [])
+  const [participants, setParticipants] = useState([])
+  useEffect(() => {
+    api.getParticipants()
+      .then(list => setParticipants(list.map(p => ({ id: String(p.id), nom: p.nom, fonction: p.fonction || '' }))))
+      .catch(() => {})
+  }, [])
 
   const toggleParticipant = (participant) => {
     setSelectedParticipants(prev =>
@@ -105,7 +118,26 @@ export function ChoixParticipantsPopup({ session, onChoisir, onClose }) {
         <div style={{ padding: 24 }}>
           <div style={{ marginBottom: 20, maxHeight: 300, overflowY: 'auto' }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: C.text2, marginBottom: 10 }}>Participants disponibles</div>
-            {participants.length === 0 ? (
+
+            {/* Utilisateur connecté — toujours en premier, coché */}
+            {selfPart && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '10px 14px', marginBottom: 6, borderRadius: 8,
+                background: C.bluePale, border: `1.5px solid ${C.navy}`,
+              }}>
+                <div style={{ width: 20, height: 20, borderRadius: 4, flexShrink: 0, border: `2px solid ${C.navy}`, background: C.navy, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: C.navy }}>{selfPart.nom}</div>
+                  <div style={{ fontSize: 11, color: C.text3 }}>{selfPart.fonction || '—'}</div>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, color: C.navy, background: '#dbeafe', borderRadius: 99, padding: '2px 8px' }}>Vous</span>
+              </div>
+            )}
+
+            {participants.length === 0 && !selfPart ? (
               <div style={{ padding: 20, textAlign: 'center', color: C.text4, border: `1px dashed ${C.border2}`, borderRadius: 8 }}>
                 Aucun participant. Cliquez sur l'engrenage ⚙️ pour en importer.
               </div>
@@ -338,6 +370,7 @@ function formatDuree(ms) {
 
 // ─── Liste principale ──────────────────────────────────────────────────────────
 export default function RCAList({ sessions, onSelect, onUpdateSession }) {
+  const { user } = useAuth()
   const [popupMethode, setPopupMethode]           = useState(null)
   const [popupParticipants, setPopupParticipants] = useState(null)
   const [tempSession, setTempSession]             = useState(null)
@@ -438,6 +471,7 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
           session={popupParticipants}
           onChoisir={handleChoisirParticipants}
           onClose={() => setPopupParticipants(null)}
+          currentUser={user}
         />
       )}
 
@@ -532,8 +566,8 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
                   const dt = formatDateTime(s.dateHeureDebut)
                   return dt ? (
                     <div>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#1d4ed8' }}>{dt.date}</div>
-                      <div style={{ fontSize: 10, color: '#64748b' }}>{dt.time}</div>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b' }}>{dt.date}</div>
+                      <div style={{ fontSize: 10, color: '#94a3b8' }}>{dt.time}</div>
                     </div>
                   ) : <span style={{ fontSize: 11, color: '#cbd5e1' }}>—</span>
                 })()}
@@ -545,15 +579,15 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
                   const dt = formatDateTime(s.dateHeureFin)
                   return dt ? (
                     <div>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#059669' }}>{dt.date}</div>
-                      <div style={{ fontSize: 10, color: '#64748b' }}>{dt.time}</div>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b' }}>{dt.date}</div>
+                      <div style={{ fontSize: 10, color: '#94a3b8' }}>{dt.time}</div>
                     </div>
                   ) : <span style={{ fontSize: 11, color: '#cbd5e1' }}>—</span>
                 })()}
               </div>
 
               {/* DURÉE */}
-              <div style={{ fontSize: 11, fontWeight: 600, color: s.tempsAnalyse ? '#1d4ed8' : '#cbd5e1', fontFamily: "'Sora',sans-serif", whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: s.tempsAnalyse ? '#64748b' : '#cbd5e1', fontFamily: "'Sora',sans-serif", whiteSpace: 'nowrap' }}>
                 {formatDuree(s.tempsAnalyse)}
               </div>
 

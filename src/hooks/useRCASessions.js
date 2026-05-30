@@ -1,52 +1,40 @@
 // src/hooks/useRCASessions.js
-import { useState, useCallback } from 'react'
-import { INITIAL_SESSIONS } from '../data/rcaSessions'
-
-const LS_KEY = 'jesa_rca_sessions'
-
-function readLS() {
-  try {
-    const raw = localStorage.getItem(LS_KEY)
-    return raw ? JSON.parse(raw) : INITIAL_SESSIONS
-  } catch { return INITIAL_SESSIONS }
-}
-
-function saveLS(sessions) {
-  localStorage.setItem(LS_KEY, JSON.stringify(sessions))
-}
+import { useState, useCallback, useEffect } from 'react'
+import { api } from '../lib/api'
 
 export default function useRCASessions() {
-  const [sessions, setSessions] = useState(readLS)
+  const [sessions, setSessions] = useState([])
+  const [loading,  setLoading]  = useState(true)
 
-  const createSession = useCallback((s) => {
-    const session = {
-      ...s,
-      id: s.id || `RCA-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${(Date.now() % 900) + 100}`,
-    }
-    setSessions(prev => {
-      const next = [session, ...prev]
-      saveLS(next)
-      return next
-    })
-    return session
+  useEffect(() => {
+    let cancelled = false
+    api.getSessions()
+      .then(data => { if (!cancelled) setSessions(data) })
+      .catch(err  => console.error('useRCASessions:', err))
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [])
 
-  const updateSession = useCallback((u) => {
+  const createSession = useCallback(async (s) => {
+    const created = await api.createSession(s)
+    // Upsert : si session existante retournée par le backend, remplacer sans dupliquer
     setSessions(prev => {
-      const next = prev.map(s => s.id === u.id ? u : s)
-      saveLS(next)
-      return next
+      const exists = prev.some(x => x.id === created.id)
+      return exists ? prev.map(x => x.id === created.id ? created : x) : [created, ...prev]
     })
-    return u
+    return created
   }, [])
 
-  const deleteSession = useCallback((id) => {
-    setSessions(prev => {
-      const next = prev.filter(s => s.id !== id)
-      saveLS(next)
-      return next
-    })
+  const updateSession = useCallback(async (s) => {
+    const updated = await api.updateSession(s.id, s)
+    setSessions(prev => prev.map(x => x.id === updated.id ? updated : x))
+    return updated
   }, [])
 
-  return { sessions, setSessions, loading: false, createSession, updateSession, deleteSession }
+  const deleteSession = useCallback(async (id) => {
+    await api.deleteSession(id)
+    setSessions(prev => prev.filter(x => x.id !== id))
+  }, [])
+
+  return { sessions, setSessions, loading, createSession, updateSession, deleteSession }
 }

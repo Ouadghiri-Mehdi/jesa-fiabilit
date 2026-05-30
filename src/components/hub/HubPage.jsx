@@ -111,7 +111,7 @@ export default function HubPage() {
             </svg>
           </div>
           <span style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16, color: '#0b2e63' }}>
-            JESA
+            JESA Reliability Hub
           </span>
         </div>
 

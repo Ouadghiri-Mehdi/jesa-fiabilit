@@ -6,8 +6,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import C from '../../tokens/colors'
-import { EQUIPMENT_LIST } from '../../data/equipements'
-import { POSTES_TECHNIQUES } from '../../data/postes_techniques'
+import { api } from '../../lib/api'
 
 const sInput = {
   width: '100%', padding: '9px 13px', background: '#fff',
@@ -55,7 +54,6 @@ const TYPES = [
   { key: 'amelioration', label: 'Amélioration',    desc: 'Démarche proactive' },
 ]
 
-let rcaCounter = 20
 
 // ─── Popup Attention ────────────────────────────────────────────────────────
 function AttentionPopup({ missingFields, onClose }) {
@@ -176,6 +174,11 @@ export default function NewRCAModal({ defaultEquipId, defaultNiveau, defaultStat
   const today = new Date().toISOString().slice(0, 10)
   const navigate = useNavigate()
 
+  const [equipmentList, setEquipmentList] = useState([])
+  useEffect(() => {
+    api.getEquipements().then(setEquipmentList).catch(() => {})
+  }, [])
+
   const [type, setType]                         = useState(defaultEquipId ? 'equipement' : null)
   const [posteTechnique, setPosteTechnique]     = useState(defaultEquipId || '')
   const [posteSearch, setPosteSearch]           = useState(defaultEquipId || '')
@@ -196,17 +199,19 @@ export default function NewRCAModal({ defaultEquipId, defaultNiveau, defaultStat
   const methodeEffective = isN2 ? '5why' : methode
 
   // Poste technique: filtered list from search input
-  const posteFiltered = POSTES_TECHNIQUES.filter(p =>
+  const posteFiltered = equipmentList.filter(p =>
     p.id.toLowerCase().includes(posteSearch.toLowerCase()) ||
-    p.designation.toLowerCase().includes(posteSearch.toLowerCase())
+    (p.designation || '').toLowerCase().includes(posteSearch.toLowerCase())
   ).slice(0, 8)
 
   // When poste technique is selected from dropdown, auto-fill designation + niveau
   const handlePosteSelect = (p) => {
+    const niv   = p.entite  || p.niveau  || '—'
+    const eqseq = p.famille || p.eqSeq   || '—'
     setPosteTechnique(p.id)
     setPosteSearch(p.id)
     setDesignation(p.designation || '')
-    setNiveauEqSeq(p.eqSeq || '—')
+    setNiveauEqSeq(`${niv} · ${eqseq}`)
     setShowPosteDropdown(false)
   }
 
@@ -214,10 +219,16 @@ export default function NewRCAModal({ defaultEquipId, defaultNiveau, defaultStat
     setPosteSearch(val)
     setPosteTechnique(val)
     setShowPosteDropdown(true)
-    // If exact match, auto-fill
-    const found = POSTES_TECHNIQUES.find(p => p.id === val)
-    if (found) { setDesignation(found.designation || ''); setNiveauEqSeq(found.eqSeq || '—') }
-    else { setDesignation(''); setNiveauEqSeq('—') }
+    const found = equipmentList.find(p => p.id === val)
+    if (found) {
+      const niv   = found.entite  || found.niveau  || '—'
+      const eqseq = found.famille || found.eqSeq   || '—'
+      setDesignation(found.designation || '')
+      setNiveauEqSeq(`${niv} · ${eqseq}`)
+    } else {
+      setDesignation('')
+      setNiveauEqSeq('—')
+    }
   }
 
   // Check required fields before allowing method selection
@@ -251,9 +262,7 @@ export default function NewRCAModal({ defaultEquipId, defaultNiveau, defaultStat
 
   const handleCreate = () => {
     if (!validate()) return
-    rcaCounter++
     onCreate({
-      id: `RCA-2026-0${rcaCounter}`,
       equipId: posteTechnique || null,
       designation, dateOuverture: dateDebut || today,
       dateDebut, causeArret,
@@ -273,7 +282,7 @@ export default function NewRCAModal({ defaultEquipId, defaultNiveau, defaultStat
     const session = { equipId: defaultEquipId, niveau: defaultNiveau || 2, statut: defaultStatut || 'alert', phenomene: '' }
     return (
       <ChoixMethodePopup session={session}
-        onChoisir={(m) => { rcaCounter++; onCreate({ id: `RCA-2026-0${rcaCounter}`, equipId: defaultEquipId, dateOuverture: today, niveau: defaultNiveau || 2, source: 'TUM', type: 'equipement', responsable: '', participants: [], statut: 'en-cours', methode: m, phenomene: '', noeuds: [], actionsGenerees: [] }) }}
+        onChoisir={(m) => { onCreate({ equipId: defaultEquipId, dateOuverture: today, niveau: defaultNiveau || 2, source: 'TUM', type: 'equipement', responsable: '', participants: [], statut: 'en-cours', methode: m, phenomene: '', noeuds: [], actionsGenerees: [] }) }}
         onClose={onClose}
       />
     )

@@ -1,6 +1,7 @@
 // src/components/actions/ActionsPage.jsx
 import { useState, useMemo, useEffect } from 'react'
 import C from '../../tokens/colors'
+import { api } from '../../lib/api'
 
 const STATUT_CFG = {
   'pas-commence': { label: 'Non commencé', bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
@@ -11,14 +12,6 @@ const STATUT_CFG = {
   'cloturee':     { label: 'Clôturé',      bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' },
 }
 
-function readLS(key, fallback) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback }
-  catch { return fallback }
-}
-
-function saveLS(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
-}
 
 function RetardBadge({ delai, statut }) {
   if (statut === 'cloturee' || statut === 'cloture') return <span style={{ fontSize: 11.5, color: '#059669', fontWeight: 600 }}>✓ Clôturée</span>
@@ -199,20 +192,14 @@ function EquipGroup({ equipId, actions, onStatusChange, collapsed, onToggle }) {
 }
 
 export default function ActionsPage() {
-  const [sessions, setSessions] = useState(() => readLS('jesa_rca_sessions', []))
+  const [sessions,   setSessions]   = useState([])
   const [search,     setSearch]     = useState('')
   const [filtStatut, setFiltStatut] = useState('')
   const [filtEquip,  setFiltEquip]  = useState('')
   const [collapsed,  setCollapsed]  = useState({})
 
   useEffect(() => {
-    const handle = e => {
-      if (e.key === 'jesa_rca_sessions' && e.newValue) {
-        try { setSessions(JSON.parse(e.newValue)) } catch {}
-      }
-    }
-    window.addEventListener('storage', handle)
-    return () => window.removeEventListener('storage', handle)
+    api.getSessions().then(setSessions).catch(() => {})
   }, [])
 
   const allActions = useMemo(() => {
@@ -265,7 +252,8 @@ export default function ActionsPage() {
       return { ...s, actionsGenerees: (s.actionsGenerees || []).map(a => a.id === actionId ? { ...a, statut: newStatut } : a) }
     })
     setSessions(updated)
-    saveLS('jesa_rca_sessions', updated)
+    const sess = updated.find(s => s.id === sessionId)
+    if (sess) api.updateSession(sessionId, sess).catch(() => {})
   }
 
   const toggleGroup = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }))

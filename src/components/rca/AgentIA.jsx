@@ -1,9 +1,10 @@
 // src/components/rca/AgentIA.jsx
 // Agent IA — design identique au HTML original
 // Header gradient navy + robot SVG + status EN LIGNE + context bar
-// Messages bubbles + boutons rapides + input + attach
+// Messages bubbles + boutons rapides + input + attach (PDF / image → Gemini Vision)
 
 import { useState, useRef } from 'react'
+import { api } from '../../lib/api'
 
 const RobotSVG = ({ size = 26 }) => (
   <svg width={size} height={size} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -34,11 +35,65 @@ const RobotSmall = () => (
   </svg>
 )
 
+// ── Icône trombone ────────────────────────────────────────────────────────────
+const AttachIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+  </svg>
+)
+
+// ── Icône PDF ─────────────────────────────────────────────────────────────────
+const PdfIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+    <polyline points="14 2 14 8 20 8"/>
+  </svg>
+)
+
+// ── Icône image ───────────────────────────────────────────────────────────────
+const ImgIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+    <circle cx="8.5" cy="8.5" r="1.5"/>
+    <polyline points="21 15 16 10 5 21"/>
+  </svg>
+)
+
+// ── Chip fichier (en attente d'analyse) ───────────────────────────────────────
+function FileChip({ file, onRemove }) {
+  const isPdf = file.name.toLowerCase().endsWith('.pdf')
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5,
+      background: isPdf ? '#fef2f2' : '#eff6ff',
+      border: `1.5px solid ${isPdf ? '#fecaca' : '#bfdbfe'}`,
+      borderRadius: 20, padding: '3px 9px 3px 7px',
+      fontSize: 11, color: isPdf ? '#dc2626' : '#1d4ed8', fontWeight: 600,
+      maxWidth: 200,
+    }}>
+      <span style={{ flexShrink: 0, color: isPdf ? '#ef4444' : '#3b82f6' }}>
+        {isPdf ? <PdfIcon /> : <ImgIcon />}
+      </span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>
+        {file.name}
+      </span>
+      <button onClick={onRemove}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1,
+          color: isPdf ? '#ef4444' : '#3b82f6', fontSize: 14, fontWeight: 900, flexShrink: 0 }}>
+        ×
+      </button>
+    </div>
+  )
+}
+
 const INITIAL_MESSAGES_5WHY = [
   {
     role: 'assistant',
     content: null,
-    html: `Bonjour&nbsp;! Je suis votre <strong>Agent RCA JESA</strong>. Je vous assisterai avec les <strong>causes racines probables</strong>, les <strong>actions correctives</strong> et le <strong>plan de maintenance</strong>.`,
+    html: `Bonjour&nbsp;! Je suis votre <strong>Agent RCA JESA</strong>. Je vous assisterai avec les <strong>causes racines probables</strong>, les <strong>actions correctives</strong> et le <strong>plan de maintenance</strong>. Vous pouvez également joindre un <strong>PDF ou une image</strong> pour analyse automatique.`,
   },
 ]
 
@@ -46,7 +101,7 @@ const INITIAL_MESSAGES_KAIZEN = [
   {
     role: 'assistant',
     content: null,
-    html: `Bonjour&nbsp;! Je suis votre <strong>Agent RCA JESA</strong>. Je vous assisterai avec les causes racines possibles et les actions correctives.`,
+    html: `Bonjour&nbsp;! Je suis votre <strong>Agent RCA JESA</strong>. Je vous assisterai avec les causes racines possibles et les actions correctives. Vous pouvez joindre un <strong>PDF ou une image</strong> pour analyse.`,
   },
 ]
 
@@ -57,19 +112,20 @@ const QUICK_ACTIONS_5WHY = [
 ]
 
 const QUICK_ACTIONS_KAIZEN = [
-  { key: 'pheno',   label: 'PROBLEM',         bg: '#FEFFD6', border: '#F2F724', color: '#8a8000',  badge: 'P',  badgeBg: '#F2F724' },
-  { key: 'actions', label: 'POSSIBLE CAUSES', bg: '#e3f2fd', border: '#2980b9', color: '#1a5276',  badge: 'PC', badgeBg: '#2980b9' },
-  { key: 'racine',  label: 'VERIFICATION',    bg: '#eaeff8', border: '#1a3a6b', color: '#1a3a6b',  badge: 'V',  badgeBg: '#1a3a6b' },
-  { key: 'causes',  label: 'ACTIONS',         bg: '#e0f5f0', border: '#0aaa8a', color: '#0aaa8a',  badge: 'A',  badgeBg: '#0aaa8a' },
+  { key: 'pheno',   label: 'PROBLEM',         bg: '#f1f5f9', border: '#94a3b8', color: '#64748b',  badge: 'P',  badgeBg: '#94a3b8' },
+  { key: 'actions', label: 'POSSIBLE CAUSES', bg: '#f1f5f9', border: '#94a3b8', color: '#64748b',  badge: 'PC', badgeBg: '#94a3b8' },
+  { key: 'racine',  label: 'VERIFICATION',    bg: '#f1f5f9', border: '#94a3b8', color: '#64748b',  badge: 'V',  badgeBg: '#94a3b8' },
+  { key: 'causes',  label: 'ACTIONS',         bg: '#f1f5f9', border: '#94a3b8', color: '#64748b',  badge: 'A',  badgeBg: '#94a3b8' },
 ]
 
 export default function AgentIA({ session, methode }) {
   const isKaizen = methode === 'kaizen'
-  const [messages, setMessages] = useState(isKaizen ? INITIAL_MESSAGES_KAIZEN : INITIAL_MESSAGES_5WHY)
-  const [input, setInput]       = useState('')
-  const [loading, setLoading]   = useState(false)
-  const [attachedFiles, setAF]  = useState([])
-  const chatRef = useRef()
+  const [messages, setMessages]   = useState(isKaizen ? INITIAL_MESSAGES_KAIZEN : INITIAL_MESSAGES_5WHY)
+  const [input, setInput]         = useState('')
+  const [loading, setLoading]     = useState(false)
+  const [pendingFiles, setPending] = useState([])   // File[] en attente (chips)
+  const chatRef    = useRef()
+  const fileRef    = useRef()
 
   const scrollDown = () => setTimeout(() => chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' }), 50)
 
@@ -84,46 +140,97 @@ export default function AgentIA({ session, methode }) {
     return userMsg
   }
 
+  // ── Envoi texte ───────────────────────────────────────────────────────────
   const callAPI = async (userText, displayText, quickKey) => {
     setLoading(true)
     setMessages(m => [...m, { role: 'user', content: displayText }])
     scrollDown()
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: "Tu es un expert en fiabilité industrielle JESA (RCA, Arbre De Causes, AMDEC, Kaizen). Tu assistes un fiabiliste. Tu suggères des pistes SANS jamais valider automatiquement. Réponds de façon structurée et professionnelle en français.",
-          messages: [
-            ...messages.filter(m => m.role === 'user' || m.role === 'assistant').slice(-6).map(m => ({ role: m.role, content: m.content || m.html?.replace(/<[^>]+>/g, '') || '' })),
-            { role: 'user', content: buildPrompt(userText, quickKey) },
-          ],
-        }),
+      const question = buildPrompt(userText, quickKey)
+      const data = await api.aiSuggest({
+        equip_id:  session.equipId  || 'non précisé',
+        phenomene: session.phenomene || '',
+        methode:   isKaizen ? 'kaizen' : '5why',
+        rca_id:    session.id || null,
+        question,
       })
-      const data = await res.json()
-      const text = data.content?.[0]?.text || "Réponse non disponible."
-      setMessages(m => [...m, { role: 'assistant', content: text }])
+      setMessages(m => [...m, { role: 'assistant', html: data.reply || 'Réponse non disponible.' }])
     } catch (err) {
-      setMessages(m => [...m, { role: 'assistant', content: `⚠️ Erreur : ${err.message}` }])
+      setMessages(m => [...m, { role: 'assistant', html: `⚠️ Erreur de connexion au service IA. Vérifiez que le backend est démarré.` }])
     } finally {
       setLoading(false)
       scrollDown()
     }
   }
 
-  const handleSend = () => {
-    if (!input.trim()) return
-    const msg = input.trim()
+  // ── Analyse fichier ────────────────────────────────────────────────────────
+  const analyzeFile = async (file) => {
+    const isPdf = file.name.toLowerCase().endsWith('.pdf')
+    const icon  = isPdf ? '📄' : '🖼️'
+
+    setMessages(m => [...m, { role: 'user', content: `${icon} Fichier joint : ${file.name}` }])
+    setLoading(true)
+    scrollDown()
+
+    try {
+      const data = await api.aiUploadFile(
+        file,
+        session.equipId  || '',
+        session.phenomene || '',
+        session.id       || '',
+      )
+      // En-tête + analyse formatée
+      const header = `📎 <strong>Analyse — ${file.name}</strong><br><br>`
+      setMessages(m => [...m, {
+        role: 'assistant',
+        html: header + (data.reply || 'Analyse non disponible.'),
+      }])
+    } catch (err) {
+      setMessages(m => [...m, {
+        role: 'assistant',
+        html: `⚠️ Impossible d'analyser <strong>${file.name}</strong> : ${err.message}`,
+      }])
+    } finally {
+      setLoading(false)
+      scrollDown()
+    }
+  }
+
+  // ── Sélection de fichier(s) ────────────────────────────────────────────────
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    // Reset pour permettre de re-sélectionner le même fichier
+    e.target.value = ''
+    setPending(prev => [...prev, ...files])
+  }
+
+  // ── Envoi (texte + éventuels fichiers en attente) ─────────────────────────
+  const handleSend = async () => {
+    const txt   = input.trim()
+    const files = pendingFiles
+
+    if (!txt && !files.length) return
+
     setInput('')
-    callAPI(msg, msg, null)
+    setPending([])
+
+    // Analyser les fichiers en attente en séquence
+    for (const f of files) {
+      await analyzeFile(f)
+    }
+
+    // Envoyer le message texte s'il y en a un
+    if (txt) {
+      callAPI(txt, txt, null)
+    }
   }
 
   const handleQuick = (key, label) => callAPI('', label, key)
 
   const quickActions = isKaizen ? QUICK_ACTIONS_KAIZEN : QUICK_ACTIONS_5WHY
+  const canSend      = !loading && (input.trim() || pendingFiles.length > 0)
 
   return (
     <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 4px 20px rgba(15,30,53,.08)', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)', maxHeight: 820, minHeight: 480 }}>
@@ -164,6 +271,10 @@ export default function AgentIA({ session, methode }) {
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(96,165,250,.6)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
         <span style={{ fontSize: 9.5, color: 'rgba(96,165,250,.7)', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}>
           {session.equipId ? `${session.equipId} chargé` : 'RCA Manuelle'} — Analyse prête
+        </span>
+        {/* Badge PDF/Image accepté */}
+        <span style={{ marginLeft: 'auto', fontSize: 9, color: 'rgba(148,163,184,.6)', fontWeight: 500 }}>
+          PDF · PNG · JPG acceptés
         </span>
       </div>
 
@@ -223,6 +334,16 @@ export default function AgentIA({ session, methode }) {
         ))}
       </div>
 
+      {/* ── Zone fichiers en attente (chips) */}
+      {pendingFiles.length > 0 && (
+        <div style={{ padding: '6px 12px', background: '#f8fafd', borderTop: '1px solid #e8edf5', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+          <span style={{ fontSize: 9.5, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', marginRight: 2 }}>Pièces jointes :</span>
+          {pendingFiles.map((f, i) => (
+            <FileChip key={i} file={f} onRemove={() => setPending(prev => prev.filter((_, j) => j !== i))} />
+          ))}
+        </div>
+      )}
+
       {/* ── Input */}
       <div style={{ display: 'flex', gap: 7, padding: '10px 12px', borderTop: '1px solid #e2e8f0', background: '#fff', flexShrink: 0, alignItems: 'center' }}>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: '#f1f5f9', border: '1.5px solid #e2e8f0', borderRadius: 24, padding: '0 12px', transition: 'border-color .15s' }}
@@ -231,20 +352,67 @@ export default function AgentIA({ session, methode }) {
           <input
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder="Posez une question à l'agent RCA..."
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
+            placeholder={pendingFiles.length ? `Ajouter un commentaire (optionnel)…` : `Posez une question à l'agent RCA…`}
             style={{ flex: 1, padding: '8px 0', border: 'none', background: 'transparent', fontSize: 12, color: '#0f172a', outline: 'none', fontFamily: "'DM Sans',sans-serif" }}
           />
         </div>
-        {/* Attach */}
-        <label style={{ width: 34, height: 34, background: '#f1f5f9', border: '1.5px solid #e2e8f0', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-          <input type="file" style={{ display: 'none' }} multiple accept=".pdf,.png,.jpg,.jpeg" onChange={e => setAF(f => [...f, ...Array.from(e.target.files).map(x => x.name)])} />
+
+        {/* ── Bouton pièce jointe */}
+        <label
+          title="Joindre PDF ou image"
+          style={{
+            width: 34, height: 34,
+            background: pendingFiles.length ? '#eff6ff' : '#f1f5f9',
+            border: `1.5px solid ${pendingFiles.length ? '#bfdbfe' : '#e2e8f0'}`,
+            borderRadius: '50%', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            color: pendingFiles.length ? '#3b82f6' : '#64748b',
+            transition: 'all .15s',
+            position: 'relative',
+          }}>
+          <AttachIcon />
+          {pendingFiles.length > 0 && (
+            <span style={{
+              position: 'absolute', top: -4, right: -4,
+              width: 14, height: 14, borderRadius: '50%',
+              background: '#3b82f6', color: '#fff',
+              fontSize: 9, fontWeight: 800,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: '1.5px solid #fff',
+            }}>
+              {pendingFiles.length}
+            </span>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            style={{ display: 'none' }}
+            multiple
+            accept=".pdf,.png,.jpg,.jpeg"
+            onChange={handleFileChange}
+          />
         </label>
-        {/* Send */}
-        <button onClick={handleSend} disabled={loading || !input.trim()}
-          style={{ width: 34, height: 34, background: 'linear-gradient(135deg,#1a3a6b,#1e4d8c)', border: 'none', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(26,58,107,.3)', flexShrink: 0 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+
+        {/* ── Bouton envoyer */}
+        <button
+          onClick={handleSend}
+          disabled={!canSend}
+          title="Envoyer"
+          style={{
+            width: 34, height: 34,
+            background: canSend ? 'linear-gradient(135deg,#1a3a6b,#1e4d8c)' : '#e2e8f0',
+            border: 'none', borderRadius: '50%', cursor: canSend ? 'pointer' : 'not-allowed',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: canSend ? '0 2px 8px rgba(26,58,107,.3)' : 'none', flexShrink: 0,
+            transition: 'all .15s',
+          }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke={canSend ? '#fff' : '#94a3b8'} strokeWidth="2.5"
+            strokeLinecap="round" strokeLinejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
         </button>
       </div>
 

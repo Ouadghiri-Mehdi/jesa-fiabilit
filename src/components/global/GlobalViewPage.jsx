@@ -1,7 +1,8 @@
 // src/components/global/GlobalViewPage.jsx
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth, getAllClosedRCAs } from '../../auth/AuthContext'
+import { useAuth } from '../../auth/AuthContext'
+import { api } from '../../lib/api'
 
 
 const SITE_COLORS = {
@@ -152,6 +153,50 @@ function ReadOnlyFiveWhyTree({ noeuds, phenomene }) {
   )
 }
 
+// ── Roue Kaizen SVG ──────────────────────────────────────────────────────────
+function KaizenWheelSVG({ activeLetters = ['P','C','V','A'] }) {
+  const cx = 90, cy = 90, outerR = 70, innerR = 32, ringR = 78, badgeR = 51, gap = 5
+
+  function polar(r, deg) {
+    const rad = (deg - 90) * Math.PI / 180
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)]
+  }
+
+  function sector(s, e) {
+    const [x1,y1] = polar(outerR, s), [x2,y2] = polar(outerR, e)
+    const [x3,y3] = polar(innerR, e), [x4,y4] = polar(innerR, s)
+    return `M${x1.toFixed(2)},${y1.toFixed(2)} A${outerR},${outerR},0,0,1,${x2.toFixed(2)},${y2.toFixed(2)} L${x3.toFixed(2)},${y3.toFixed(2)} A${innerR},${innerR},0,0,0,${x4.toFixed(2)},${y4.toFixed(2)} Z`
+  }
+
+  const steps = [
+    { letter:'P', start:gap,     end:90-gap,  mid:45  },
+    { letter:'C', start:90+gap,  end:180-gap, mid:135 },
+    { letter:'V', start:180+gap, end:270-gap, mid:225 },
+    { letter:'A', start:270+gap, end:360-gap, mid:315 },
+  ]
+
+  return (
+    <svg viewBox="0 0 180 180" width={160} height={160} style={{ flexShrink:0 }}>
+      {steps.map(s => {
+        const [bx, by] = polar(badgeR, s.mid)
+        const on = activeLetters.includes(s.letter)
+        return (
+          <g key={s.letter}>
+            <path d={sector(s.start, s.end)} fill={on ? '#2d5fa6' : '#7a9bc0'} opacity={on ? 1 : 0.45} />
+            <circle cx={bx} cy={by} r={12} fill="#1a3a6b" />
+            <text x={bx} y={by} textAnchor="middle" dominantBaseline="central"
+              fontSize={10} fontWeight={900} fill="#fff" fontFamily="sans-serif">{s.letter}</text>
+          </g>
+        )
+      })}
+      {/* cercle central */}
+      <circle cx={cx} cy={cy} r={innerR} fill="#1a3a6b" />
+      <text x={cx} y={cy-7} textAnchor="middle" fontSize={7.5} fontWeight={800} fill="#fff" fontFamily="sans-serif">QUICK</text>
+      <text x={cx} y={cy+6} textAnchor="middle" fontSize={7.5} fontWeight={800} fill="#fff" fontFamily="sans-serif">KAIZEN</text>
+    </svg>
+  )
+}
+
 // ── Quick Kaizen P-C-V-A lecture seule ──────────────────────────────────────
 function KZStepHeader({ letter, letterBg, letterColor, title, count }) {
   return (
@@ -183,6 +228,13 @@ function ReadOnlyKaizen({ noeuds }) {
   const rejetees  = checkRows.filter(r => r.resultat === 'rejete')
   const bonnes    = checkRows.filter(r => r.resultat === 'valide')
 
+  const activeLetters = [
+    'P',
+    causes.length > 0    ? 'C' : null,
+    checkRows.length > 0 ? 'V' : null,
+    rejetees.length > 0  ? 'A' : null,
+  ].filter(Boolean)
+
   const qqoqcp = [
     { label:'OÙ ?',       value: plan.ou },
     { label:'QUAND ?',    value: plan.quand },
@@ -192,28 +244,34 @@ function ReadOnlyKaizen({ noeuds }) {
     { label:'POURQUOI ?', value: plan.pourquoi },
   ].filter(q => q.value?.trim())
 
-  const cardStyle = (borderColor, bg) => ({
-    background: bg || '#fff', border:'1.5px solid #e2e8f0',
-    borderRadius:12, borderLeft:`4px solid ${borderColor}`,
+  const NAVY = '#1a3a6b'
+  const card = {
+    background:'#f4f6fb', border:'1.5px solid #d0d9ed',
+    borderRadius:12, borderLeft:`4px solid ${NAVY}`,
     padding:'16px 18px', boxShadow:'0 1px 4px rgba(15,30,53,.05)',
-  })
+  }
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
 
+      {/* ── Roue visuelle ── */}
+      <div style={{ display:'flex', justifyContent:'center', padding:'8px 0 4px' }}>
+        <KaizenWheelSVG activeLetters={activeLetters} />
+      </div>
+
       {/* ── P : Problème observé ── */}
-      <div style={cardStyle('#d4a017', '#fffef0')}>
-        <KZStepHeader letter="P" letterBg="#F2F724" letterColor="#8a8000" title="Problème observé" />
+      <div style={card}>
+        <KZStepHeader letter="P" letterBg={NAVY} letterColor="#fff" title="Problème observé" />
         <div style={{ fontWeight:700, fontSize:14, color:'#1e293b', lineHeight:1.5, marginBottom: qqoqcp.length ? 14 : 0 }}>
           {plan.titre || <span style={{ color:'#94a3b8', fontStyle:'italic', fontWeight:400 }}>Non renseigné</span>}
         </div>
         {qqoqcp.length > 0 && (
           <>
-            <div style={{ fontSize:10, fontWeight:800, color:'#8a8000', textTransform:'uppercase', letterSpacing:'.8px', marginBottom:8 }}>Méthode QQOQCP</div>
+            <div style={{ fontSize:10, fontWeight:800, color:NAVY, textTransform:'uppercase', letterSpacing:'.8px', marginBottom:8 }}>Méthode QQOQCP</div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(170px, 1fr))', gap:7 }}>
               {qqoqcp.map(q => (
-                <div key={q.label} style={{ background:'#fff', borderRadius:8, padding:'8px 11px', border:'1px solid #f1e68a' }}>
-                  <div style={{ fontSize:9, fontWeight:800, color:'#8a8000', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:4 }}>{q.label}</div>
+                <div key={q.label} style={{ background:'#fff', borderRadius:8, padding:'8px 11px', border:'1px solid #d0d9ed' }}>
+                  <div style={{ fontSize:9, fontWeight:800, color:NAVY, textTransform:'uppercase', letterSpacing:'.7px', marginBottom:4 }}>{q.label}</div>
                   <div style={{ fontSize:12.5, color:'#374151', lineHeight:1.4 }}>{q.value}</div>
                 </div>
               ))}
@@ -224,12 +282,12 @@ function ReadOnlyKaizen({ noeuds }) {
 
       {/* ── C : Causes possibles ── */}
       {causes.length > 0 && (
-        <div style={cardStyle('#2980b9', '#f0f8ff')}>
-          <KZStepHeader letter="C" letterBg="#2980b9" letterColor="#fff" title="Causes possibles" count={`${causes.length} hypothèse${causes.length > 1 ? 's' : ''}`} />
+        <div style={card}>
+          <KZStepHeader letter="C" letterBg={NAVY} letterColor="#fff" title="Causes possibles" count={`${causes.length} hypothèse${causes.length > 1 ? 's' : ''}`} />
           <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
             {causes.map((c, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:'#fff', borderRadius:8, border:'1px solid #bfdbfe' }}>
-                <span style={{ width:22, height:22, borderRadius:'50%', background:'#e3f2fd', border:'1.5px solid #2980b9', color:'#1a5276', fontSize:10, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i + 1}</span>
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:'#fff', borderRadius:8, border:'1px solid #d0d9ed' }}>
+                <span style={{ width:22, height:22, borderRadius:'50%', background:'#e8edf6', border:`1.5px solid ${NAVY}`, color:NAVY, fontSize:10, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i + 1}</span>
                 <span style={{ fontSize:13, color:'#1e293b' }}>{c}</span>
               </div>
             ))}
@@ -239,11 +297,11 @@ function ReadOnlyKaizen({ noeuds }) {
 
       {/* ── V : Vérification ── */}
       {checkRows.length > 0 && (
-        <div style={cardStyle('#1a3a6b', '#f4f6fb')}>
-          <KZStepHeader letter="V" letterBg="#1a3a6b" letterColor="#fff" title="Vérification des causes"
+        <div style={card}>
+          <KZStepHeader letter="V" letterBg={NAVY} letterColor="#fff" title="Vérification des causes"
             count={`${bonnes.length} BON · ${rejetees.length} rejeté${rejetees.length > 1 ? 'es' : 'e'}`} />
-          <div style={{ background:'#fff', border:'1.5px solid #e2e8f0', borderRadius:10, overflow:'hidden' }}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 110px', background:'#1a3a6b', padding:'0 14px' }}>
+          <div style={{ background:'#fff', border:'1.5px solid #d0d9ed', borderRadius:10, overflow:'hidden' }}>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 110px', background:NAVY, padding:'0 14px' }}>
               {['Cause possible', 'Test réalisé', 'Résultat'].map(h => (
                 <div key={h} style={{ padding:'9px 6px', fontSize:10, fontWeight:700, color:'#fff', textTransform:'uppercase', letterSpacing:'.7px' }}>{h}</div>
               ))}
@@ -252,7 +310,7 @@ function ReadOnlyKaizen({ noeuds }) {
               const isValide = r.resultat === 'valide'
               const isRejete = r.resultat === 'rejete'
               return (
-                <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 1fr 110px', padding:'0 14px', borderBottom: i < checkRows.length - 1 ? '1px solid #f1f5f9' : 'none', background: isValide ? '#f0fdf4' : isRejete ? '#fef2f2' : i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 1fr 110px', padding:'0 14px', borderBottom: i < checkRows.length - 1 ? '1px solid #eef2f7' : 'none', background: i % 2 === 0 ? '#fff' : '#f8fafc' }}>
                   <div style={{ padding:'10px 6px', fontSize:12.5, color:'#1e293b', fontWeight:600 }}>{r.cause || '—'}</div>
                   <div style={{ padding:'10px 6px', fontSize:12, color:'#475569' }}>{r.test || <span style={{ color:'#cbd5e1', fontStyle:'italic' }}>—</span>}</div>
                   <div style={{ padding:'10px 6px' }}>
@@ -266,11 +324,16 @@ function ReadOnlyKaizen({ noeuds }) {
           </div>
           {checkRows.some(r => r.pieceJointe) && (
             <div style={{ marginTop:8, display:'flex', gap:8, flexWrap:'wrap' }}>
-              {checkRows.filter(r => r.pieceJointe).map((r, i) => (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:7, fontSize:11.5, color:'#0369a1', fontWeight:600 }}>
-                  <span>📎</span>{r.pieceJointe}
-                </div>
-              ))}
+              {checkRows.filter(r => r.pieceJointe).map((r, i) => {
+                const pjName = r.pieceJointe?.name || (typeof r.pieceJointe === 'string' ? r.pieceJointe : '')
+                const pjUrl  = r.pieceJointe?.url || null
+                return (
+                  <a key={i} href={pjUrl || undefined} target="_blank" rel="noreferrer"
+                    style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', background:'#eef2f7', border:'1px solid #d0d9ed', borderRadius:7, fontSize:11.5, color:NAVY, fontWeight:600, textDecoration: pjUrl ? 'underline' : 'none', cursor: pjUrl ? 'pointer' : 'default' }}>
+                    <span>📎</span>{pjName}
+                  </a>
+                )
+              })}
             </div>
           )}
         </div>
@@ -278,18 +341,22 @@ function ReadOnlyKaizen({ noeuds }) {
 
       {/* ── A : Causes confirmées à traiter ── */}
       {rejetees.length > 0 && (
-        <div style={cardStyle('#0aaa8a', '#f0fdf8')}>
-          <KZStepHeader letter="A" letterBg="#0aaa8a" letterColor="#fff" title="Causes confirmées — à traiter" count={`${rejetees.length} cause${rejetees.length > 1 ? 's' : ''}`} />
+        <div style={card}>
+          <KZStepHeader letter="A" letterBg={NAVY} letterColor="#fff" title="Causes confirmées — à traiter" count={`${rejetees.length} cause${rejetees.length > 1 ? 's' : ''}`} />
           <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
             {rejetees.map((r, i) => (
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 13px', background:'#fff', borderRadius:8, border:'1.5px solid #a7f3d0' }}>
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 13px', background:'#fff', borderRadius:8, border:'1.5px solid #d0d9ed' }}>
                 <span style={{ width:22, height:22, borderRadius:'50%', background:'#fef2f2', border:'1.5px solid #fecaca', color:'#dc2626', fontSize:10, fontWeight:800, display:'inline-flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>✗</span>
                 <span style={{ fontSize:13, color:'#1e293b', fontWeight:600 }}>{r.cause}</span>
-                {r.pieceJointe && <span style={{ marginLeft:'auto', fontSize:11, color:'#0369a1' }}>📎 {r.pieceJointe}</span>}
+                {r.pieceJointe && (() => {
+                  const pjName = r.pieceJointe?.name || (typeof r.pieceJointe === 'string' ? r.pieceJointe : '')
+                  const pjUrl  = r.pieceJointe?.url || null
+                  return <a href={pjUrl || undefined} target="_blank" rel="noreferrer" style={{ marginLeft:'auto', fontSize:11, color:NAVY, textDecoration: pjUrl ? 'underline' : 'none' }}>📎 {pjName}</a>
+                })()}
               </div>
             ))}
           </div>
-          <div style={{ marginTop:10, fontSize:11, color:'#0aaa8a', fontWeight:600 }}>
+          <div style={{ marginTop:10, fontSize:11, color:NAVY, fontWeight:600 }}>
             ↓ Ces causes génèrent les actions correctives du plan ci-dessous
           </div>
         </div>
@@ -307,8 +374,9 @@ const STATUT_ACTION_CFG = {
 }
 
 // ── Tableau actions lecture seule ────────────────────────────────────────────
-function ReadOnlyActions({ actions }) {
+function ReadOnlyActions({ actions, rcaStartDate }) {
   if (!actions?.length) return null
+  const rcaDay = rcaStartDate ? rcaStartDate.slice(0, 10) : null
   const COLS = '40px 1fr 1fr 110px 140px 120px 110px'
   const HEADS = ['#', 'Cause racine', 'Action corrective', 'N° OT', 'Participant', 'Délai', 'Statut']
   return (
@@ -320,7 +388,7 @@ function ReadOnlyActions({ actions }) {
         </div>
         {actions.map((a, i) => {
           const sc = STATUT_ACTION_CFG[a.statut] || { label: a.statut || '—', bg: '#f1f5f9', color: '#64748b' }
-          const isOverdue = a.delai && new Date(a.delai) < new Date() && a.statut !== 'cloture'
+          const isOverdue = a.delai && a.statut !== 'cloture' && rcaDay && a.delai !== rcaDay
           return (
             <div key={a.id || i} style={{ display:'grid', gridTemplateColumns:COLS, padding:'0 12px', borderBottom: i < actions.length - 1 ? '1px solid #f1f5f9' : 'none', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
               <div style={{ padding:'12px 8px', display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -365,20 +433,20 @@ function SectionTitle({ children, icon }) {
 
 // ── Modal détail complet ─────────────────────────────────────────────────────
 function GlobalRCADetail({ rca: initialRca, onClose }) {
-  const { user } = useAuth()
   const [rca, setRca] = useState(initialRca)
 
   useEffect(() => {
-    function refresh() {
-      const all = getAllClosedRCAs(user?.siteKey)
-      const updated = all.find(r => r.id === initialRca.id && r._siteKey === initialRca._siteKey)
-      if (updated) setRca(updated)
-    }
-    refresh()
-    window.addEventListener('storage', refresh)
-    window.addEventListener('focus',   refresh)
-    return () => { window.removeEventListener('storage', refresh); window.removeEventListener('focus', refresh) }
-  }, [initialRca.id, initialRca._siteKey, user?.siteKey])
+    api.getClosedSessionsAll().then(sessions => {
+      const updated = sessions.find(s => s.id === initialRca.id)
+      if (updated) setRca({
+          ...updated,
+          equipLabel:   updated.equipId,
+          _site:        updated.siteName || updated.siteId,
+          equipNiveau:  initialRca.equipNiveau  || null,
+          equipFamille: initialRca.equipFamille || null,
+        })
+    }).catch(() => {})
+  }, [initialRca.id])
 
   if (!rca) return null
 
@@ -415,6 +483,8 @@ function GlobalRCADetail({ rca: initialRca, onClose }) {
     : 'linear-gradient(90deg,#1a3a6b,#3b82f6,#1a3a6b)'
 
   const KPI_ITEMS = [
+    { label:'NIVEAU',        value: rca.equipNiveau  || null },
+    { label:'EQ/SEQ',        value: rca.equipFamille || null },
     { label:'CUMUL ARRÊT',   value: rca.cumulArret != null ? `${rca.cumulArret} h` : null },
     { label:'FRÉQUENCE',     value: rca.frequence  != null ? `${rca.frequence} /mois` : null },
     { label:'DURÉE ANALYSE', value: formatDuree(rca.tempsAnalyse) !== '—' ? formatDuree(rca.tempsAnalyse) : null },
@@ -512,7 +582,7 @@ function GlobalRCADetail({ rca: initialRca, onClose }) {
             {actions.length > 0 && (
               <div>
                 <SectionTitle icon="📋">Plan d'actions correctives</SectionTitle>
-                <ReadOnlyActions actions={actions} />
+                <ReadOnlyActions actions={actions} rcaStartDate={rca.dateHeureDebut} />
               </div>
             )}
 
@@ -580,16 +650,36 @@ export default function GlobalViewPage() {
   const [filterSite,  setFilterSite]  = useState('all')
   const [search,      setSearch]      = useState('')
   const [selectedRCA, setSelectedRCA] = useState(null)
-  const [tick,        setTick]        = useState(0)
+  const [allRCAs,     setAllRCAs]     = useState([])
 
-  useEffect(() => {
-    const refresh = e => { if (!e || e.key === 'jesa_rca_sessions' || e.key === null) setTick(t => t + 1) }
-    window.addEventListener('storage', refresh)
-    window.addEventListener('focus',   refresh)
-    return () => { window.removeEventListener('storage', refresh); window.removeEventListener('focus', refresh) }
+  const loadRCAs = useCallback(() => {
+    Promise.all([api.getClosedSessionsAll(), api.getEquipements()])
+      .then(([sessions, equips]) => {
+        const equipMap = {}
+        equips.forEach(e => {
+          equipMap[e.id] = {
+            designation: e.designation || e.id,
+            niveau:      e.entite  || null,
+            famille:     e.famille || null,
+          }
+        })
+        const closed = sessions.map(s => ({
+          ...s,
+          equipLabel:   equipMap[s.equipId]?.designation || s.equipId,
+          equipNiveau:  equipMap[s.equipId]?.niveau      || null,
+          equipFamille: equipMap[s.equipId]?.famille     || null,
+          _site:        s.siteName || s.siteId || '—',
+        }))
+        setAllRCAs(closed)
+      }).catch(() => {})
   }, [])
 
-  const allRCAs = useMemo(() => getAllClosedRCAs(user?.siteKey), [user?.siteKey, tick])
+  useEffect(() => { loadRCAs() }, [loadRCAs])
+
+  useEffect(() => {
+    window.addEventListener('focus', loadRCAs)
+    return () => window.removeEventListener('focus', loadRCAs)
+  }, [loadRCAs])
 
   const sites = useMemo(() => {
     const s = new Set(allRCAs.map(r => r._site).filter(Boolean))
@@ -723,14 +813,15 @@ export default function GlobalViewPage() {
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={{ ...thS, width:52, textAlign:'center' }}>#</th>
-                    <th style={{ ...thS, width:'18%' }}>Poste technique</th>
+                    <th style={{ ...thS, width:52, textAlign:'center' }}>Rang</th>
+                    <th style={{ ...thS, width:'14%' }}>Poste technique</th>
+                    <th style={{ ...thS, width:'18%' }}>Désignation du poste technique</th>
                     <th style={{ ...thS, width:80 }}>Site</th>
                     <th style={{ ...thS, width:150 }}>Méthode</th>
                     <th style={{ ...thS }}>Cause d'arrêt</th>
                     <th style={{ ...thS, width:140 }}>Participants</th>
                     <th style={{ ...thS, width:115 }}>Clôturé le</th>
-                    <th style={{ ...thS, width:100, borderRight:'none', textAlign:'center' }}>Détail</th>
+                    <th style={{ ...thS, width:90, borderRight:'none', textAlign:'center' }}>Détail</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -758,8 +849,13 @@ export default function GlobalViewPage() {
 
                         {/* Poste technique */}
                         <td style={td()}>
-                          <div style={{ fontFamily:"'Sora',sans-serif", fontWeight:700, fontSize:12.5, color:'#1a3a6b', marginBottom:2 }}>{rca.equipLabel || rca.equipId || '—'}</div>
+                          <div style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, fontSize:12.5, color:'#1a3a6b' }}>{rca.equipId || '—'}</div>
                           <div style={{ fontSize:10.5, color:'#94a3b8', fontFamily:"'JetBrains Mono',monospace" }}>{rca.id}</div>
+                        </td>
+
+                        {/* Désignation */}
+                        <td style={td()}>
+                          <div style={{ fontWeight:600, fontSize:13, color:'#374151' }}>{rca.equipLabel || '—'}</div>
                         </td>
 
                         {/* Site */}

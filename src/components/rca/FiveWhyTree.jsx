@@ -10,6 +10,7 @@
 
 import { useState, useCallback } from 'react'
 import C from '../../tokens/colors'
+import { api } from '../../lib/api'
 
 const STATUTS = {
   investigation: { label: '?', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', borderCard: '#cbd5e1' },
@@ -155,16 +156,32 @@ function Noeud({ noeud, depth, onChangeStatut, onChangeTexte, onAddDocs, onRemov
         {depth > 0 && (
           <div style={{ marginTop:6, marginBottom:2 }}>
             <div style={{ display:'flex', flexDirection:'column', gap:4, maxHeight:100, overflowY:'auto' }}>
-              {docs.map((doc, idx) => (
-                <div key={idx} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'#f1f5f9', borderRadius:4, padding:'3px 6px', fontSize:10, color:'#334155' }}>
-                  <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:125 }} title={doc}>📎 {doc}</span>
-                  <button onClick={() => onRemoveDoc(noeud.id, idx)} style={{ border:'none', background:'none', cursor:'pointer', color:'#ef4444', fontSize:12, lineHeight:1, marginLeft:4 }}>×</button>
-                </div>
-              ))}
+              {docs.map((doc, idx) => {
+                const name = doc?.name || (typeof doc === 'string' ? doc : '')
+                const url  = doc?.url || null
+                return (
+                  <div key={idx} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'#f1f5f9', borderRadius:4, padding:'3px 6px', fontSize:10, color:'#334155' }}>
+                    {url
+                      ? <a href={url} target="_blank" rel="noreferrer" style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:125, color:'#0369a1', textDecoration:'underline' }} title={name}>📎 {name}</a>
+                      : <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:125 }} title={name}>📎 {name}</span>
+                    }
+                    <button onClick={() => onRemoveDoc(noeud.id, idx)} style={{ border:'none', background:'none', cursor:'pointer', color:'#ef4444', fontSize:12, lineHeight:1, marginLeft:4 }}>×</button>
+                  </div>
+                )
+              })}
             </div>
             <label style={{ fontSize:10, color:'#64748b', cursor:'pointer', display:'flex', alignItems:'center', gap:4, padding:'4px 0', marginTop: docs.length ? 4 : 0 }}>
               <span style={{ fontSize:12 }}>📎</span> Joindre fichier(s)
-              <input type="file" multiple style={{ display:'none' }} onChange={e => { if (e.target.files?.length) { onAddDocs(noeud.id, Array.from(e.target.files).map(f => f.name)); e.target.value = null } }} />
+              <input type="file" multiple style={{ display:'none' }}
+                onChange={async e => {
+                  const files = Array.from(e.target.files || [])
+                  if (!files.length) return
+                  try {
+                    const uploaded = await Promise.all(files.map(f => api.uploadFile(f)))
+                    onAddDocs(noeud.id, uploaded)
+                  } catch { /* silencieux */ }
+                  e.target.value = null
+                }} />
             </label>
           </div>
         )}

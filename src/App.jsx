@@ -10,6 +10,7 @@ import RCAPage from './components/rca/RCAPage'
 import ActionsPage from './components/actions/ActionsPage'
 import HistoriquePage from './components/historique/HistoriquePage'
 import DashboardPage from './components/dashboard/DashboardPage'
+import IABasedSolutionPage from './components/ia/IABasedSolutionPage'
 
 function PrivateRoute({ children }) {
   const { user } = useAuth()
@@ -41,6 +42,7 @@ function AppRoutes() {
         <Route path="historique" element={<HistoriquePage />} />
         <Route path="historique/:equipId" element={<HistoriquePage />} />
         <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="ia-solution" element={<IABasedSolutionPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />

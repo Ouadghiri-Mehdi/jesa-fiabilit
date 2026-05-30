@@ -110,32 +110,29 @@ export default function ChatbotFAB({ pathname }) {
     setLoading(true)
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: `Tu es un assistant expert pour JESA ReliabilityOS, une application de fiabilité industrielle (phosphates, OCP Maroc). 
-Tu aides les fiabilistes avec : 
-- Navigation dans l'app (TUM, RCA, Actions, Historique, Dashboard, Config, SAP)
-- Analyses RCA (5 Pourquoi, Quick Kaizen), seuils N0/N1/N2
-- Causes racines d'équipements (broyeurs, convoyeurs, pompes)
-- Bonnes pratiques de fiabilité industrielle
-- Interprétation des KPIs (MTBF, MTTR, Disponibilité, TUM)
+      const BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+      const token = localStorage.getItem('jesa_token')
 
-Page courante : ${pathname || '/'}
-Réponds en français, de façon concise et professionnelle (max 3 paragraphes courts).
-Utilise du <strong> pour les mots importants. Pas de markdown.`,
-          messages: [{ role: 'user', content: q }],
-        }),
+      // Historique sans balises HTML (max 6 messages)
+      const history = messages.slice(-6).map(m => ({
+        role: m.role === 'bot' ? 'assistant' : 'user',
+        content: m.text.replace(/<[^>]*>/g, ''),
+      }))
+
+      const res = await fetch(`${BASE}/api/ai/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ question: q, page: pathname, history }),
       })
 
+      if (!res.ok) throw new Error(`Erreur ${res.status}`)
       const data = await res.json()
-      const reply = data.content?.map(b => b.text || '').join('').trim()
-      addMsg('bot', reply || 'Désolé, je n\'ai pas pu traiter votre demande.')
+      addMsg('bot', data.reply || 'Désolé, je n\'ai pas pu traiter votre demande.')
     } catch {
-      addMsg('bot', 'Erreur de connexion. Vérifiez votre réseau et réessayez.')
+      addMsg('bot', 'Erreur de connexion au service IA. Vérifiez que le backend est démarré.')
     } finally {
       setLoading(false)
     }

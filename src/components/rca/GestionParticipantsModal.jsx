@@ -6,7 +6,15 @@ import * as XLSX from 'xlsx'
 import C from '../../tokens/colors'
 import Modal from '../shared/Modal'
 import Button from '../shared/Button'
-import { getParticipants, saveParticipants, DEFAULT_PARTICIPANTS } from '../../data/participants'
+import { api } from '../../lib/api'
+
+const DEFAULT_PARTICIPANTS_LIST = [
+  { nom: 'Personne 1', fonction: 'Ingénieure Fiabilité' },
+  { nom: 'Personne 2', fonction: 'Chef de Production' },
+  { nom: 'Personne 3', fonction: 'Technicienne Maintenance' },
+  { nom: 'Personne 4', fonction: 'Planificateur Maintenance' },
+  { nom: 'Personne 5', fonction: 'Analyste Process' },
+]
 
 // ── Charger SheetJS dynamiquement depuis CDN
 function loadSheetJS() {
@@ -21,7 +29,7 @@ function loadSheetJS() {
 }
 
 export default function GestionParticipantsModal({ onClose, showNotif }) {
-  const [participants, setParticipants] = useState(() => getParticipants())
+  const [participants, setParticipants] = useState([])
   const [preview, setPreview] = useState(null)
   const [loading, setLoading] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -29,21 +37,32 @@ export default function GestionParticipantsModal({ onClose, showNotif }) {
 
   useEffect(() => {
     loadSheetJS().catch(() => {})
+    api.getParticipants()
+      .then(list => setParticipants(list.map(p => ({ id: String(p.id), nom: p.nom, fonction: p.fonction || '' }))))
+      .catch(() => {})
   }, [])
 
   // ── Réinitialiser à la liste par défaut
-  const handleReset = () => {
-    setParticipants(DEFAULT_PARTICIPANTS)
-    saveParticipants(DEFAULT_PARTICIPANTS)
-    showNotif('✅ Liste réinitialisée', `Liste par défaut (${DEFAULT_PARTICIPANTS.length} participants)`, 'green')
+  const handleReset = async () => {
+    try {
+      await api.bulkParticipants(DEFAULT_PARTICIPANTS_LIST)
+      const list = await api.getParticipants()
+      setParticipants(list.map(p => ({ id: String(p.id), nom: p.nom, fonction: p.fonction || '' })))
+      showNotif('✅ Liste réinitialisée', `Liste par défaut (${DEFAULT_PARTICIPANTS_LIST.length} participants)`, 'green')
+    } catch {
+      showNotif('❌ Erreur', 'Impossible de réinitialiser la liste', 'red')
+    }
   }
 
   // ── Supprimer un participant
-  const handleDelete = (id) => {
-    const updated = participants.filter(p => p.id !== id)
-    setParticipants(updated)
-    saveParticipants(updated)
-    showNotif('✅ Participant supprimé', '', 'green')
+  const handleDelete = async (id) => {
+    try {
+      await api.deleteParticipant(id)
+      setParticipants(prev => prev.filter(p => p.id !== id))
+      showNotif('✅ Participant supprimé', '', 'green')
+    } catch {
+      showNotif('❌ Erreur', 'Impossible de supprimer le participant', 'red')
+    }
   }
 
   // ── Traiter le fichier Excel importé
@@ -124,19 +143,21 @@ export default function GestionParticipantsModal({ onClose, showNotif }) {
   }, [showNotif])
 
   // ── Importer les participants (remplacement)
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!preview) return
-
-    const newParticipants = preview.rows.map((p, idx) => ({
-      id: `p-${Date.now()}-${idx}`,
-      nom: p.nom,
-      fonction: p.fonction || '',
-    }))
-
-    setParticipants(newParticipants)
-    saveParticipants(newParticipants)
-    showNotif('✅ Liste mise à jour', `${newParticipants.length} participant(s) importé(s)`, 'green')
-    setPreview(null)
+    setIsImporting(true)
+    try {
+      const toSend = preview.rows.map(p => ({ nom: p.nom, fonction: p.fonction || '' }))
+      await api.bulkParticipants(toSend)
+      const list = await api.getParticipants()
+      setParticipants(list.map(p => ({ id: String(p.id), nom: p.nom, fonction: p.fonction || '' })))
+      showNotif('✅ Liste mise à jour', `${toSend.length} participant(s) importé(s)`, 'green')
+      setPreview(null)
+    } catch {
+      showNotif('❌ Erreur', 'Impossible d\'importer la liste', 'red')
+    } finally {
+      setIsImporting(false)
+    }
   }
 
   // ── Télécharger le modèle Excel

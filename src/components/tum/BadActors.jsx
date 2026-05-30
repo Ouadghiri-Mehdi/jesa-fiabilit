@@ -2,10 +2,12 @@
 // Vue Pareto des Bad Actors — Refonte complète
 // 3 vues : Pareto (défaut) | Équipements en alerte | Analyse cumul & fréquence
 // ✦ Vue "Suivi des équipements RCA" remplacée par tableau Image 1
+// 🔥 CORRECTION : Les cumuls ne prennent plus en compte les sessions clôturées
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import C from '../../tokens/colors'
 import { getStatut } from '../../hooks/useTUM'
+import { api } from '../../lib/api'
 
 // ─── Helper date display ───────────────────────────────────────────────────────
 const fmtDate = str => {
@@ -74,7 +76,7 @@ async function captureCardAsImage(cardEl, filename = 'pareto.png') {
 
 // ─── Bouton Copier (icône seule, sans texte) ──────────────────────────────────
 function CopyButton({ cardRef, filename }) {
-  const [state, setState] = useState('idle') // idle | loading | done
+  const [state, setState] = useState('idle')
   return (
     <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
       <button
@@ -180,7 +182,6 @@ function ParetoSVGCumul({ items }) {
         const x = pad.left + i * step + (step - bW) / 2
         const y = pad.top + gH - barH
         const isHov = hovered === item.id
-        const labelMaxChar = n > 20 ? 8 : n > 12 ? 11 : n > 7 ? 14 : 22
         return (
           <g key={item.id} onMouseEnter={() => setHovered(item.id)} onMouseLeave={() => setHovered(null)} style={{ cursor: 'pointer' }}>
             {item.isBadActor && <rect x={x} y={y - 3} width={bW} height={3} rx="1.5" fill="#dc2626" opacity="0.85" />}
@@ -271,7 +272,6 @@ function ParetoSVGFreq({ items }) {
         const x = pad.left + i * step + (step - bW) / 2
         const y = pad.top + gH - barH
         const isHov = hovered === item.id
-        const labelMaxChar = n > 20 ? 8 : n > 12 ? 11 : n > 7 ? 14 : 22
         return (
           <g key={item.id} onMouseEnter={() => setHovered(item.id)} onMouseLeave={() => setHovered(null)} style={{ cursor: 'pointer' }}>
             {item.isBadActorFreq && <rect x={x} y={y - 3} width={bW} height={3} rx="1.5" fill="#dc2626" opacity="0.85" />}
@@ -324,7 +324,7 @@ function CumulLineChart({ data, seuilN1, seuilN2, seuilLabel, title, unit, color
   const yScale = v => pad.top + gH - (v / maxVal) * gH
   const yN1 = yScale(seuilN1)
   const yN2 = yScale(seuilN2)
-  const getColor = val => val >= seuilN2 ? '#AD1010' : val >= seuilN1 ? '#F5DD27' : '#57F527'
+  const getColor = val => val >= seuilN2 ? '#AD1010' : val >= seuilN1 ? '#F5DD27' : '#009929'
   const pts = sorted.map((item, i) => ({ x: pad.left + i * step + step / 2, y: yScale(item[colorKey]), val: item[colorKey], id: item.id }))
   const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
 
@@ -348,25 +348,21 @@ function CumulLineChart({ data, seuilN1, seuilN2, seuilLabel, title, unit, color
         const total = data.length
         return (
           <div style={{ marginBottom: 12, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6 }}>
-            {/* Cumul total */}
             <div style={{ padding: '8px 10px', borderRadius: 7, background: '#f1f5f9', border: `1px solid #e2e8f0`, textAlign: 'center' }}>
               <div style={{ fontSize: 8.5, fontWeight: 700, color: C.text4, textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 3 }}>Total</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: C.navy, fontFamily: "'Sora',sans-serif", lineHeight: 1 }}>{total}</div>
               <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>équipement{total > 1 ? 's' : ''}</div>
             </div>
-            {/* Alerte */}
             <div style={{ padding: '8px 10px', borderRadius: 7, background: '#f1f5f9', border: `1px solid #e2e8f0`, textAlign: 'center' }}>
               <div style={{ fontSize: 8.5, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 3 }}>● Alerte</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: '#AD1010', fontFamily: "'Sora',sans-serif", lineHeight: 1 }}>{nbAlerte}</div>
               <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>équipement{nbAlerte > 1 ? 's' : ''}</div>
             </div>
-            {/* Surveillance */}
             <div style={{ padding: '8px 10px', borderRadius: 7, background: '#f1f5f9', border: `1px solid #e2e8f0`, textAlign: 'center' }}>
               <div style={{ fontSize: 8.5, fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 3 }}>● Surveillance</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: '#b45309', fontFamily: "'Sora',sans-serif", lineHeight: 1 }}>{nbSurveillance}</div>
               <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>équipement{nbSurveillance > 1 ? 's' : ''}</div>
             </div>
-            {/* Normal */}
             <div style={{ padding: '8px 10px', borderRadius: 7, background: '#f1f5f9', border: `1px solid #e2e8f0`, textAlign: 'center' }}>
               <div style={{ fontSize: 8.5, fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 3 }}>● Normal</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: '#059669', fontFamily: "'Sora',sans-serif", lineHeight: 1 }}>{nbNormal}</div>
@@ -432,7 +428,6 @@ function CumulLineChart({ data, seuilN1, seuilN2, seuilLabel, title, unit, color
           <text x={14} y={pad.top + gH / 2} textAnchor="middle" fontSize="9.5" fill={C.text3} fontWeight="600" transform={`rotate(-90, 14, ${pad.top + gH / 2})`} fontFamily="DM Sans,sans-serif">{seuilLabel}</text>
         </svg>
       </div>
-      {/* ── Légende — sous le graphique ── */}
       <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 14px', padding: '8px 12px', borderRadius: 8, background: '#f8fafd', border: `1px solid ${C.border}` }}>
           {[
@@ -474,19 +469,12 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
   const [filterStatut, setFilterStatut] = useState('all')
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('jesa_rca_sessions')
-      if (stored) setSessions(JSON.parse(stored))
-      else import('../../data/rcaSessions').then(m => setSessions(m.INITIAL_SESSIONS || []))
-    } catch {
-      import('../../data/rcaSessions').then(m => setSessions(m.INITIAL_SESSIONS || []))
-    }
+    api.getSessions().then(setSessions).catch(() => {})
   }, [])
 
   const allRows = useMemo(() => {
     const rows = []
 
-    // Équipements en alerte/surveillance → toujours affichés
     alertItems.forEach(item => {
       const sess = sessions.find(s => s.equipId === item.id && s.statut !== 'cloturee')
       const closedSess = sessions.find(s => s.equipId === item.id && s.statut === 'cloturee')
@@ -500,7 +488,7 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
 
       rows.push({
         key: item.id,
-        rang: 0, // sera recalculé
+        rang: 0,
         equipId: item.id,
         cumul: item.cumul,
         freq: item.freq,
@@ -513,7 +501,6 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
       })
     })
 
-    // Trier par cumul décroissant et attribuer le rang
     rows.sort((a, b) => b.cumul - a.cumul)
     rows.forEach((r, i) => r.rang = i + 1)
 
@@ -556,7 +543,6 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {/* Barre filtres */}
       <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: C.text3, fontWeight: 600 }}>{nbTotal} analyse{nbTotal > 1 ? 's' : ''} au total</span>
@@ -582,7 +568,6 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
         </div>
       </div>
 
-      {/* Tableau style Image 1 */}
       {filtered.length === 0 ? (
         <div style={{ padding: '48px 24px', textAlign: 'center' }}>
           <div style={{ fontSize: 36, marginBottom: 10, opacity: 0.35 }}>🔍</div>
@@ -614,42 +599,28 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
                   <tr key={r.key} style={{ transition: 'background .1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#f8fbff'}
                     onMouseLeave={e => e.currentTarget.style.background = ''}>
-
-                    {/* Rang */}
                     <td style={td({ textAlign: 'center', background: '#fafcff' })}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#64748b', fontFamily: "'DM Sans',sans-serif" }}>
                         {r.rang}
                       </div>
                     </td>
-
-                    {/* Équipement */}
                     <td style={td()}>
                       <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13, color: '#1a3a6b' }}>{r.equipId}</div>
                     </td>
-
-                    {/* Cumul */}
                     <td style={td()}>
                       <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 13, color: '#1a3a6b' }}>{r.cumul.toFixed(1)}h</span>
                     </td>
-
-                    {/* Arrêts */}
                     <td style={td()}>
                       {r.freq} fois
                     </td>
-
-                    {/* Dernière panne */}
                     <td style={td({ color: '#64748b' })}>
                       {r.datePanne || '—'}
                     </td>
-
-                    {/* Cause d'arrêt */}
                     <td style={td()}>
                       <span style={{ display: 'block', lineHeight: 1.5 }}>
                         {r.cause || '—'}
                       </span>
                     </td>
-
-                    {/* Statut */}
                     <td style={td()}>
                       {isCloture ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#ecfdf5', color: '#059669', border: '1.5px solid #a7f3d0', whiteSpace: 'nowrap' }}>● Clôturé</span>
@@ -657,25 +628,23 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1.5px solid #fecaca', whiteSpace: 'nowrap' }}>● À réaliser</span>
                       )}
                     </td>
-
-                    {/* Action */}
                     <td style={td({ borderRight: 'none' })}>
                       {isCloture ? (
                         <button
                           onClick={() => r.rcaId && onLancerRCA && onLancerRCA(r.rcaId, r.statut === 'alert' ? 2 : 1, true)}
-                          style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#059669', fontWeight: 700, cursor: 'pointer', fontSize: 11.5, fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+                          style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#059669', fontWeight: 700, cursor: 'pointer', fontSize: 11.5, fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
                           Consulter
                         </button>
                       ) : r.statut === 'alert' ? (
                         <button
                           onClick={() => onLancerRCA && onLancerRCA(r.equipId, 2)}
-                          style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#dc2626', fontWeight: 700, cursor: 'pointer', fontSize: 11.5, fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+                          style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#dc2626', fontWeight: 700, cursor: 'pointer', fontSize: 11.5, fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
                           Arbre De Causes
                         </button>
                       ) : (
                         <button
                           onClick={() => onLancerRCA && onLancerRCA(r.equipId, 1)}
-                          style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#b45309', fontWeight: 700, cursor: 'pointer', fontSize: 11.5, fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+                          style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#b45309', fontWeight: 700, cursor: 'pointer', fontSize: 11.5, fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
                           Quick Kaizen
                         </button>
                       )}
@@ -721,22 +690,30 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
   const histDebut = useMemo(() => { const [y, m, d] = histDebutStr.split('-').map(Number); return new Date(y, m - 1, d, 0, 0, 0) }, [histDebutStr])
   const histFin = useMemo(() => { const [y, m, d] = histFinStr.split('-').map(Number); return new Date(y, m - 1, d, 23, 59, 59) }, [histFinStr])
 
+  // Pareto : toutes les sessions (OPEN + CLOSED) dans la période sélectionnée
   const { paretoItems, badActors, paretoCumul, paretoNbArrets } = useMemo(() => {
     const equipIds = [...new Set(arrets.map(a => a.equipId))]
     const raw = equipIds.map(id => {
-      const filtered = arrets.filter(a => { const dt = new Date(a.startTime); return a.equipId === id && dt >= paretoDebut && dt <= paretoFin })
-      const cumul = filtered.reduce((s, a) => s + (a.duration || 0), 0)
-      const freq = filtered.length
+      // Toutes les sessions dans la période — la date est le seul filtre
+      const filtered = arrets.filter(a => {
+        const dt = new Date(a.startTime)
+        return a.equipId === id && dt >= paretoDebut && dt <= paretoFin
+      })
+
+      const cumul = filtered.reduce((s, a) => s + (a.duration  || 0), 0)
+      const freq  = filtered.reduce((s, a) => s + (a.frequence || 1), 0)
       const dernierArret = [...filtered].sort((a, b) => new Date(b.startTime) - new Date(a.startTime))[0] || null
       const statut = getStatut(cumul, freq, seuils)
       return { id, cumul, freq, statut, dernierArret }
     }).filter(r => r.cumul > 0 || r.freq > 0).sort((a, b) => b.cumul - a.cumul)
+    
     const paretoCumul = raw.reduce((s, r) => s + r.cumul, 0)
     const paretoNbArrets = raw.reduce((s, r) => s + r.freq, 0)
     let running = 0
     const withPareto = raw.map(r => {
       const pct = paretoCumul > 0 ? (r.cumul / paretoCumul) * 100 : 0
-      const prevRunning = running; running += pct
+      const prevRunning = running
+      running += pct
       return { ...r, pct, cumulPct: Math.min(running, 100), isBadActor: prevRunning < 80 }
     })
     return { paretoItems: withPareto, badActors: withPareto.filter(r => r.isBadActor), paretoCumul, paretoNbArrets }
@@ -745,20 +722,29 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
   const alertItems = useMemo(() => {
     const equipIds = [...new Set(arrets.map(a => a.equipId))]
     return equipIds.map(id => {
+      // Sessions OPEN uniquement dans l'horizon N1/N2 (calculs actifs = OPEN seulement)
+      const isOpen = a => !a.sessionStatus || a.sessionStatus === 'OPEN'
       const cutoffN2 = new Date(Date.now() - seuils.n2.horizon * 86_400_000)
-      const filteredN2 = arrets.filter(a => a.equipId === id && new Date(a.startTime) >= cutoffN2)
-      const cumulN2 = filteredN2.reduce((s, a) => s + (a.duration || 0), 0)
-      const freqN2 = filteredN2.length
+      const filteredN2 = arrets.filter(a => a.equipId === id && new Date(a.startTime) >= cutoffN2 && isOpen(a))
+      const cumulN2 = filteredN2.reduce((s, a) => s + (a.duration  || 0), 0)
+      const freqN2  = filteredN2.reduce((s, a) => s + (a.frequence || 1), 0)
+
       const cutoffN1 = new Date(Date.now() - seuils.n1.horizon * 86_400_000)
-      const filteredN1 = arrets.filter(a => a.equipId === id && new Date(a.startTime) >= cutoffN1)
-      const cumulN1 = filteredN1.reduce((s, a) => s + (a.duration || 0), 0)
-      const freqN1 = filteredN1.length
-      const statut = getStatut(cumulN2, freqN2, seuils) === 'alert' ? 'alert' : getStatut(cumulN1, freqN1, seuils)
-      const isAlert = statut === 'alert'
+      const filteredN1 = arrets.filter(a => a.equipId === id && new Date(a.startTime) >= cutoffN1 && isOpen(a))
+      const cumulN1 = filteredN1.reduce((s, a) => s + (a.duration  || 0), 0)
+      const freqN1  = filteredN1.reduce((s, a) => s + (a.frequence || 1), 0)
+      
+      const statutN2 = getStatut(cumulN2, freqN2, seuils)
+      const statutN1 = getStatut(cumulN1, freqN1, seuils)
+      
+      const isAlert = statutN2 === 'alert'
+      const statut = isAlert ? 'alert' : statutN1
       const cumul = isAlert ? cumulN2 : cumulN1
       const freq = isAlert ? freqN2 : freqN1
+      
       const allFiltered = arrets.filter(a => a.equipId === id)
       const dernierArret = [...allFiltered].sort((a, b) => new Date(b.startTime) - new Date(a.startTime))[0] || null
+      
       return { id, cumul, freq, statut, dernierArret }
     }).filter(r => (r.cumul > 0 || r.freq > 0) && (r.statut === 'alert' || r.statut === 'watch'))
   }, [arrets, seuils])
@@ -766,9 +752,15 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
   const { histData, histCumul, histNbArrets } = useMemo(() => {
     const equipIds = [...new Set(arrets.map(a => a.equipId))]
     const stats = equipIds.map(id => {
-      const filtered = arrets.filter(a => { const dt = new Date(a.startTime); return a.equipId === id && dt >= histDebut && dt <= histFin })
-      const cumul = filtered.reduce((s, a) => s + (a.duration || 0), 0)
-      const freq = filtered.length
+      const allArrets = arrets.filter(a => { 
+        const dt = new Date(a.startTime)
+        return a.equipId === id && dt >= histDebut && dt <= histFin
+      })
+      
+      // 🔥 CORRECTION : Pour l'historique, on garde TOUTES les sessions (CLOSED + OPEN)
+      // Car l'historique doit montrer le cumul total sur la période
+      const cumul = allArrets.reduce((s, a) => s + (a.duration  || 0), 0)
+      const freq  = allArrets.reduce((s, a) => s + (a.frequence || 1), 0)
       return { id, cumul, freq }
     }).filter(d => d.cumul > 0 || d.freq > 0)
     return { histData: stats, histCumul: stats.reduce((s, d) => s + d.cumul, 0), histNbArrets: stats.reduce((s, d) => s + d.freq, 0) }
@@ -779,13 +771,7 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
 
   const [rcaSessions, setRcaSessions] = useState([])
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('jesa_rca_sessions')
-      if (stored) setRcaSessions(JSON.parse(stored))
-      else import('../../data/rcaSessions').then(m => setRcaSessions(m.INITIAL_SESSIONS || []))
-    } catch {
-      import('../../data/rcaSessions').then(m => setRcaSessions(m.INITIAL_SESSIONS || []))
-    }
+    api.getSessions().then(setRcaSessions).catch(() => {})
   }, [])
 
   const rcaStats = useMemo(() => {
@@ -971,7 +957,6 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
             {/* ── BLOC 1 : Pareto Cumul Durée — Tableau + Graphique ── */}
             <div style={{ background: '#fff', borderBottom: `2px solid ${C.border}` }}>
 
-              {/* ── Titre Bloc 1 ── */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px 14px', borderBottom: `1px solid ${C.border}`, background: '#fff' }}>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: '#0F1E35', fontFamily: "'Sora', sans-serif", letterSpacing: '-.2px' }}>
@@ -1049,7 +1034,6 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
                     <div style={{ fontSize: 10.5, color: C.text4 }}>{badActors.length} équipements représentent <strong style={{ color: '#dc2626' }}>{pctCapture}%</strong> du temps d'arrêt total</div>
                     <CopyButton cardRef={paretoCumulCardRef} filename="pareto-cumul-duree.png" />
                   </div>
-                  {/* KPI row durée */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 10 }}>
                     {[
                       { lbl: 'Cumul total', val: `${paretoCumul.toFixed(1)}h`, col: C.navy },
@@ -1090,9 +1074,7 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
             {/* ── BLOC 2 : Pareto Fréquence — Tableau + Graphique ── */}
             <div style={{ background: '#fff' }}>
 
-              {/* ── Titre Bloc 2 ── */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px 14px', borderBottom: `1px solid ${C.border}`, background: '#fff' }}>
-
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: '#0F1E35', fontFamily: "'Sora', sans-serif", letterSpacing: '-.2px' }}>
                     Pareto cumul fréquence
@@ -1117,7 +1099,6 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
 
               {/* Tableau Fréquence — Bad Actors uniquement (règle 80/20) */}
               {(() => {
-                // Recalcul des % sur la base de sortedByFreq complet pour cohérence
                 const totalF = sortedByFreq.reduce((s, r) => s + r.freq, 0)
                 let runF = 0
                 const badActorsFreqWithPct = sortedByFreq.reduce((acc, r) => {
@@ -1178,7 +1159,6 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
                     <div style={{ fontSize: 10.5, color: C.text4 }}>{badActorsFreq.length} équipements représentent <strong style={{ color: '#dc2626' }}>{pctCaptureFreq}%</strong> du nombre total d'arrêts</div>
                     <CopyButton cardRef={paretoFreqCardRef} filename="pareto-frequence-arrets.png" />
                   </div>
-                  {/* KPI row fréquence */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 10 }}>
                     {[
                       { lbl: 'Cumul total arrêts', val: paretoNbArrets, col: C.navy },

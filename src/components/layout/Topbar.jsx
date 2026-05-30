@@ -1,4 +1,5 @@
 // src/components/layout/Topbar.jsx
+import { useState, useRef, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import C from '../../tokens/colors'
 import Button from '../shared/Button'
@@ -17,7 +18,18 @@ const PAGE_META = {
 export default function Topbar() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const avatarRef = useRef(null)
+
+  useEffect(() => {
+    if (!showUserMenu) return
+    const close = (e) => {
+      if (avatarRef.current && !avatarRef.current.contains(e.target)) setShowUserMenu(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [showUserMenu])
 
   const key  = Object.keys(PAGE_META).find(k => pathname.startsWith(k)) || '/tum'
   const meta = PAGE_META[key]
@@ -138,16 +150,70 @@ export default function Topbar() {
           )}
         </button>
 
-        {/* User avatar */}
-        <div style={{
-          width: 36, height: 36, borderRadius: '50%',
-          background: C.navy, color: '#fff',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 12, fontWeight: 700, cursor: 'default',
-          marginLeft: 4,
-          title: user?.username,
-        }}>
-          {initials}
+        {/* User avatar + dropdown */}
+        <div ref={avatarRef} style={{ position: 'relative', marginLeft: 4 }}>
+          <button
+            onClick={() => setShowUserMenu(v => !v)}
+            style={{
+              width: 36, height: 36, borderRadius: '50%',
+              background: showUserMenu ? '#0f2a52' : C.navy, color: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              border: showUserMenu ? '2px solid #3b82f6' : '2px solid transparent',
+              transition: 'all .15s',
+            }}
+          >
+            {initials}
+          </button>
+
+          {showUserMenu && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+              minWidth: 200, background: '#fff',
+              border: `1.5px solid ${C.border}`,
+              borderRadius: 12, boxShadow: '0 8px 32px rgba(15,30,53,.15)',
+              overflow: 'hidden', zIndex: 999,
+            }}>
+              {/* Infos utilisateur */}
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${C.border}`, background: '#f8fafc' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: C.navy, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                    {initials}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+                      {user?.prenom || ''} {user?.nom || user?.username || ''}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.text3, marginTop: 1 }}>
+                      {user?.role || 'Fiabiliste'}{user?.site ? ` · ${user.site}` : ''}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Déconnexion */}
+              <button
+                onClick={() => { setShowUserMenu(false); logout() }}
+                style={{
+                  width: '100%', padding: '11px 16px',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 13, fontWeight: 600, color: '#dc2626',
+                  fontFamily: "'DM Sans', sans-serif", textAlign: 'left',
+                  transition: 'background .12s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                Déconnexion
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

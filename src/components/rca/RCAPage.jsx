@@ -1,20 +1,28 @@
 // src/components/rca/RCAPage.jsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import C from '../../tokens/colors'
 import RCAList from './RCAList'
 import RCADetail from './RCADetail'
 import NewRCAModal from './NewRCAModal'
 import useNotifs from '../../hooks/useNotifs'
-import { getParticipants } from '../../data/participants'
-import { INITIAL_SESSIONS } from '../../data/rcaSessions'
-
-const STORAGE_KEY = 'jesa_rca_sessions'
+import useRCASessions from '../../hooks/useRCASessions'
+import { api } from '../../lib/api'
+import { useAuth } from '../../auth/AuthContext'
 
 // ─── Popup choix participants (utilisé pour le flow TUM → RCA) ───────────────
-function ChoixParticipantsPopup({ session, onChoisir, onClose }) {
-  const [selected, setSelected] = useState([])
-  const participants = getParticipants()
+function ChoixParticipantsPopup({ session, onChoisir, onClose, currentUser }) {
+  const selfPart = currentUser
+    ? { id: `user-${currentUser.id}`, nom: `${currentUser.prenom || ''} ${currentUser.nom || ''}`.trim() || currentUser.username, fonction: currentUser.role || '' }
+    : null
+
+  const [selected, setSelected] = useState(() => selfPart ? [selfPart] : [])
+  const [participants, setParticipants] = useState([])
+  useEffect(() => {
+    api.getParticipants()
+      .then(list => setParticipants(list.map(p => ({ id: String(p.id), nom: p.nom, fonction: p.fonction || '' }))))
+      .catch(() => {})
+  }, [])
   const [showManual, setShowManual] = useState(false)
   const [manualNom, setManualNom] = useState('')
   const [manualFonction, setManualFonction] = useState('')
@@ -60,7 +68,26 @@ function ChoixParticipantsPopup({ session, onChoisir, onClose }) {
         <div style={{ padding: 24 }}>
           <div style={{ maxHeight: 260, overflowY: 'auto', marginBottom: 16 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: C.text2, marginBottom: 10 }}>Participants disponibles</div>
-            {participants.length === 0 ? (
+
+            {/* Utilisateur connecté — toujours en premier, coché et non-décoché */}
+            {selfPart && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '10px 14px', marginBottom: 6, borderRadius: 8,
+                background: C.bluePale, border: `1.5px solid ${C.navy}`,
+              }}>
+                <div style={{ width: 20, height: 20, borderRadius: 4, flexShrink: 0, border: `2px solid ${C.navy}`, background: C.navy, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: C.navy }}>{selfPart.nom}</div>
+                  <div style={{ fontSize: 11, color: C.text3 }}>{selfPart.fonction || '—'}</div>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, color: C.navy, background: '#dbeafe', borderRadius: 99, padding: '2px 8px' }}>Vous</span>
+              </div>
+            )}
+
+            {participants.length === 0 && !selfPart ? (
               <div style={{ padding: 20, textAlign: 'center', color: C.text4, border: `1px dashed ${C.border2}`, borderRadius: 8 }}>
                 Aucun participant. Configurez la liste dans Paramétrage TUM → Participants.
               </div>
@@ -196,6 +223,7 @@ export default function RCAPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { showNotif } = useNotifs()
+  const { user } = useAuth()
   const queryParams = new URLSearchParams(location.search)
 
   const niveauFromQuery = queryParams.get('niveau') ? parseInt(queryParams.get('niveau')) : 2
@@ -204,45 +232,13 @@ export default function RCAPage() {
   const rcaIdFromUrl = isRcaId ? paramId : null
   const equipIdFromTUM = !isRcaId ? paramId : null
 
-  // ── Sessions persistées en localStorage (avec migration causeArret + zone) ────
-  const [sessions, setSessions] = useState(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-
-        // Charger les arrêts pour retrouver la zone manquante
-        let arrets = []
-        try {
-          const storedArrets = localStorage.getItem('jesa_arrets')
-          if (storedArrets) arrets = JSON.parse(storedArrets)
-        } catch {}
-
-        return parsed.map(s => {
-          const match = INITIAL_SESSIONS.find(is => is.id === s.id)
-          // Si la zone manque, chercher dans les arrêts de cet équipement
-          const zone = s.zone || arrets.find(a => a.equipId === s.equipId)?.zone || ''
-          return {
-            ...s,
-            zone,
-            causeArret: s.causeArret !== undefined ? s.causeArret : (match?.causeArret || ''),
-            cumulArret: match != null ? match.cumulArret : s.cumulArret,
-            frequence:  match != null ? match.frequence  : s.frequence,
-          }
-        })
-      }
-    } catch {}
-    return INITIAL_SESSIONS
-  })
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions))
-    } catch {}
-  }, [sessions])
+  // ── Sessions via API ──────────────────────────────────────────────────────────
+  const { sessions, loading, createSession, updateSession } = useRCASessions()
 
   // ── États UI ─────────────────────────────────────────────────────────────────
   const [selected, setSelected]               = useState(null)
+  const selectedRef = useRef(null)
+  useEffect(() => { selectedRef.current = selected }, [selected])
   const [selectedParticipants, setSelectedParticipants] = useState([])
   const [showNew, setShowNew]                 = useState(false)
   const [showParticipantsForTUM, setShowParticipantsForTUM] = useState(null) // session object
@@ -261,51 +257,57 @@ export default function RCAPage() {
 
   // ── Flow TUM → RCA : trouver/créer session puis afficher popup participants ──
   useEffect(() => {
-    if (!equipIdFromTUM || autoOpenDone) return
+    if (!equipIdFromTUM || autoOpenDone || loading) return
     setAutoOpenDone(true)
 
-    // Lire les sessions depuis localStorage (fraîchement mises à jour par TUM)
-    let currentSessions = sessions
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) currentSessions = JSON.parse(stored)
-    } catch {}
-
-    const existing = currentSessions.find(
-      s => s.equipId === equipIdFromTUM && s.statut !== 'cloturee'
-    )
+    // === FIX MÉTIER: Chercher session EN-COURS (pas clôturée) ===
+    const existing = sessions.find(s => s.equipId === equipIdFromTUM && s.statut !== 'cloturee')
 
     if (existing) {
+      // Session EN-COURS existe → la réutiliser
       setShowParticipantsForTUM(existing)
     } else {
-      // Créer une nouvelle session si aucune n'existe
-      const niveauNum = niveauFromQuery || 2
-      const today = new Date().toISOString().slice(0, 10)
-      const newSession = {
-        id: `RCA-${today.replace(/-/g, '')}-${Math.floor(Math.random() * 900 + 100)}`,
-        equipId: equipIdFromTUM,
-        dateOuverture: today,
-        niveau: niveauNum,
-        source: 'TUM',
-        type: 'equipement',
-        responsable: '',
-        cumulArret: 0,
-        frequence: 0,
-        tauxPanne: 0,
-        disponibilite: 100,
-        participants: [],
-        statut: 'non-commencee',
-        methode: niveauNum === 2 ? '5why' : null,
-        phenomene: queryParams.get('phenomene') || '',
-        causeArret: '',
-        noeuds: [],
-        actionsGenerees: [],
+      // === Vérifier si session CLÔTURÉE existe ===
+      const anyClosed = sessions.find(s => s.equipId === equipIdFromTUM && s.statut === 'cloturee')
+      
+      if (anyClosed) {
+        // === NOUVEAU CYCLE APRÈS RÉPARATION ===
+        // La RCA antérieure est clôturée = équipement réparé
+        // Les arrêts suivants = nouveau cycle (cumul réinitialisé à 0)
+        // Ne pas créer de doublon S2 → retour à la liste
+        showNotif({
+          text: `Équipement ${equipIdFromTUM} : RCA clôturée. Nouveau cycle en cours (compteur réinitialisé).`,
+          type: 'info',
+          duration: 4000,
+        })
+        navigate('/rca', { replace: true })
+      } else {
+        // === PREMIÈRE RCA POUR CET ÉQUIPEMENT ===
+        const niveauNum = niveauFromQuery || 2
+        const today = new Date().toISOString().slice(0, 10)
+        const newSession = {
+          equipId:       equipIdFromTUM,
+          dateOuverture: today,
+          niveau:        niveauNum,
+          source:        'TUM',
+          responsable:   '',
+          cumulArret:    0,
+          frequence:     0,
+          tauxPanne:     0,
+          disponibilite: 100,
+          participants:  [],
+          statut:        'non-commencee',
+          methode:       niveauNum === 2 ? '5why' : 'kaizen',
+          phenomene:     queryParams.get('phenomene') || '',
+          causeArret:    '',
+          noeuds:        [],
+        }
+        createSession(newSession)
+          .then(created => setShowParticipantsForTUM(created))
+          .catch(console.error)
       }
-      const merged = [newSession, ...currentSessions]
-      setSessions(merged)
-      setShowParticipantsForTUM(newSession)
     }
-  }, [equipIdFromTUM, autoOpenDone]) // eslint-disable-line
+  }, [equipIdFromTUM, autoOpenDone, loading]) // eslint-disable-line
 
   // ── Ouverture manuelle via ?modal=new ────────────────────────────────────────
   useEffect(() => {
@@ -314,20 +316,24 @@ export default function RCAPage() {
   }, [location.search])
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
-  const handleCreate = (s) => {
-    setSessions(p => [s, ...p])
-    setShowNew(false)
-    setShowParticipantsForTUM(s)
+  const handleCreate = async (s) => {
+    try {
+      const created = await createSession(s)
+      setShowNew(false)
+      setShowParticipantsForTUM(created)
+    } catch (err) { console.error(err) }
   }
 
-  const handleUpdate = (u) => {
-    setSessions(prev => prev.map(s => s.id === u.id ? u : s))
-    if (selected && selected.id === u.id) setSelected(u)
-  }
+  const handleUpdate = useCallback(async (u) => {
+    try {
+      const updated = await updateSession(u)
+      if (selectedRef.current?.id === updated.id) setSelected(updated)
+    } catch (err) { console.error(err) }
+  }, [updateSession])
 
-  const handleUpdateSession = (u) => {
-    setSessions(p => p.map(s => s.id === u.id ? u : s))
-  }
+  const handleUpdateSession = useCallback(async (u) => {
+    try { await updateSession(u) } catch (err) { console.error(err) }
+  }, [updateSession])
 
   const handleBack = () => {
     setSelected(null)
@@ -346,15 +352,14 @@ export default function RCAPage() {
     navigate('/rca', { replace: true })
   }
 
-  const handleParticipantsChoisis = (participants) => {
+  const handleParticipantsChoisis = async (participants) => {
     const session = showParticipantsForTUM
     const now = new Date().toISOString()
-    // Pour N1 sans méthode : on préassigne kaizen (suggéré) pour éviter le popup de méthode dans RCADetail
     const methodeEffective = session.methode || (session.niveau === 1 ? 'kaizen' : '5why')
     const updated = { ...session, methode: methodeEffective, participants, statut: 'en-cours', dateHeureDebut: session.dateHeureDebut || now }
-    handleUpdate(updated)
+    await handleUpdate(updated)
     setShowParticipantsForTUM(null)
-    setSelectedParticipants(participants)  // ← participants transmis à RCADetail
+    setSelectedParticipants(participants)
     navigate(`/rca/${session.id}`)
   }
 
@@ -371,6 +376,7 @@ export default function RCAPage() {
           session={showParticipantsForTUM}
           onChoisir={handleParticipantsChoisis}
           onClose={() => { setShowParticipantsForTUM(null); navigate('/rca', { replace: true }) }}
+          currentUser={user}
         />
       )}
 

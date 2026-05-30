@@ -4,6 +4,7 @@
 // 🔥 Suppression de l'onglet "Réunion fiabilité"
 // 🔥 Tableau participants en lignes (après validation)
 // 🔥 Ordre : Plan d'actions → Participants & contributions
+// 🔥 CORRECTION : cumul_arret basé sur la session active (OPEN)
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import C from '../../tokens/colors'
@@ -11,7 +12,7 @@ import FiveWhyTree from './FiveWhyTree'
 import QuickKaizenWheel from './QuickKaizenWheel'
 import ActionsTable from './ActionsTable'
 import AgentIA from './AgentIA'
-import { getParticipants } from '../../data/participants'
+import { api } from '../../lib/api'
 
 function formatDuree(ms) {
   if (!ms || ms < 1000) return '—'
@@ -121,10 +122,15 @@ export default function RCADetail({ session, onUpdate, onBack, preSelectedPartic
   const accumulatedRef  = useRef(session.tempsAnalyse || 0)
   const sessionRef      = useRef(session)
   const onUpdateRef     = useRef(onUpdate)
+  const methodeRef      = useRef(methode)
+  const actionsRef      = useRef(actions)
+  const saveTimerRef    = useRef(null)
   const [chronoDisplay, setChronoDisplay] = useState(session.tempsAnalyse || 0)
 
   useEffect(() => { sessionRef.current  = session  }, [session])
   useEffect(() => { onUpdateRef.current = onUpdate }, [onUpdate])
+  useEffect(() => { methodeRef.current  = methode  }, [methode])
+  useEffect(() => { actionsRef.current  = actions  }, [actions])
 
   useEffect(() => {
     if (session.statut === 'cloturee') {
@@ -153,22 +159,26 @@ export default function RCADetail({ session, onUpdate, onBack, preSelectedPartic
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (isN2 && !session.methode) {
-    setTimeout(() => {
-      onUpdate({ ...session, methode:'5why', statut:'en-cours', noeuds, actionsGenerees:actions })
-    }, 0)
-  }
+  // Auto-set method for N2 sessions that have no method yet — runs once on mount only
+  useEffect(() => {
+    if (isN2 && !sessionRef.current.methode) {
+      onUpdateRef.current({ ...sessionRef.current, methode: '5why', statut: 'en-cours', noeuds: [], actionsGenerees: [] })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const choisirMethode = (m) => {
     if (isN2 && m === 'kaizen') return
     setMethode(m); setML(true); setShowPopup(false)
-    onUpdate({ ...session, methode:m, statut:'en-cours', noeuds, actionsGenerees:actions })
+    onUpdateRef.current({ ...sessionRef.current, methode: m, statut: 'en-cours', noeuds: sessionRef.current.noeuds, actionsGenerees: actionsRef.current })
   }
 
   const handleNoeudsChange = useCallback((n) => {
     setNoeuds(n)
-    onUpdate({ ...session, methode, noeuds:n, actionsGenerees:actions })
-  }, [session, methode, actions, onUpdate])
+    clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      onUpdateRef.current({ ...sessionRef.current, methode: methodeRef.current, noeuds: n, actionsGenerees: actionsRef.current })
+    }, 600)
+  }, []) // stable — uses refs
 
   const handleParticipantUpdate = (index, field, value) => {
     const updated = [...participantsData]
@@ -183,8 +193,13 @@ export default function RCADetail({ session, onUpdate, onBack, preSelectedPartic
   const [newNom, setNewNom] = useState('')
   const [newFonction, setNewFonction] = useState('')
 
-  const openPicker = () => {
-    setAllParticipants(getParticipants())
+  const openPicker = async () => {
+    try {
+      const list = await api.getParticipants()
+      setAllParticipants(list.map(p => ({ id: String(p.id), nom: p.nom, fonction: p.fonction || '' })))
+    } catch {
+      setAllParticipants([])
+    }
     setSelected([])
     setNewNom('')
     setNewFonction('')
@@ -227,13 +242,14 @@ export default function RCADetail({ session, onUpdate, onBack, preSelectedPartic
       cause: f.texte, action:'', responsable:'', delai:'', statut:'pas-commence',
     }))
     setActions(newActions); setShowAct(true)
-    onUpdate({ ...session, methode, noeuds, actionsGenerees:newActions, statut:'en-cours', participants: participantsData })
+    clearTimeout(saveTimerRef.current)
+    onUpdateRef.current({ ...sessionRef.current, methode: methodeRef.current, noeuds, actionsGenerees: newActions, statut: 'en-cours', participants: participantsData })
   }
 
-  // ── Quick Kaizen : reçoit les actions générées depuis PanelAct
   const handleKaizenGenererActions = (newActions) => {
     setActions(newActions); setShowAct(true)
-    onUpdate({ ...session, methode, noeuds, actionsGenerees:newActions, statut:'en-cours', participants: participantsData })
+    clearTimeout(saveTimerRef.current)
+    onUpdateRef.current({ ...sessionRef.current, methode: methodeRef.current, noeuds, actionsGenerees: newActions, statut: 'en-cours', participants: participantsData })
   }
 
   const handleCloturer = () => {
@@ -243,13 +259,19 @@ export default function RCADetail({ session, onUpdate, onBack, preSelectedPartic
       chronoStartRef.current = null
     }
     setChronoDisplay(total)
-    onUpdate({ ...session, methode, noeuds, actionsGenerees: actions, statut: 'cloturee', participants: participantsData, tempsAnalyse: total, chronoStartedAt: null, dateHeureFin: new Date().toISOString() })
+    clearTimeout(saveTimerRef.current)
+    onUpdateRef.current({ ...sessionRef.current, methode: methodeRef.current, noeuds, actionsGenerees: actionsRef.current, statut: 'cloturee', participants: participantsData, tempsAnalyse: total, chronoStartedAt: null, dateHeureFin: new Date().toISOString() })
+    // Clôture aussi l'incident lié dans arrets (session_status → CLOSED)
+    api.closeRcaSession(sessionRef.current.id).catch(err => console.error('closeRcaSession:', err))
   }
 
-  const handleActionChange = (a) => {
+  const handleActionChange = useCallback((a) => {
     setActions(a)
-    onUpdate({ ...session, methode, noeuds, actionsGenerees:a, participants: participantsData })
-  }
+    clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      onUpdateRef.current({ ...sessionRef.current, methode: methodeRef.current, noeuds: sessionRef.current.noeuds, actionsGenerees: a })
+    }, 600)
+  }, []) // stable — uses refs
 
   // Styles pour les champs
   const inputStyle = {
@@ -526,6 +548,7 @@ export default function RCADetail({ session, onUpdate, onBack, preSelectedPartic
               label: 'FIN RCA',
               value: (() => { const d = new Date(session.dateHeureFin); return `${d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' })} ${d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}` })(),
             } : null,
+            // 🔥 CORRECTION : cumul_arret affiché tel quel (vient de la session active)
             { icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>, label: 'CUMUL ARRÊT', value: session.cumulArret != null ? `${session.cumulArret} h` : '—' },
             { icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>, label: 'FRÉQUENCE', value: session.frequence != null ? `${session.frequence} /mois` : '—' },
             { icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/></svg>, label: 'DURÉE ANALYSE', value: formatDuree(chronoDisplay), live: session.statut !== 'cloturee' },
@@ -542,7 +565,7 @@ export default function RCADetail({ session, onUpdate, onBack, preSelectedPartic
 
       {/* Analyse */}
       {methodeLocked && (
-        <div style={{ display:'grid', gridTemplateColumns: showActions ? '1fr' : '1fr 340px', gap:16, alignItems:'start' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 340px', gap:16, alignItems:'start' }}>
 
           <div>
             <div style={{ marginBottom:20 }}>
@@ -590,18 +613,17 @@ export default function RCADetail({ session, onUpdate, onBack, preSelectedPartic
                   onChange={handleActionChange}
                   participants={participantsData}
                   onAddParticipant={(p) => setParticipantsData(prev => [...prev, p])}
+                  rcaStartDate={session.dateHeureDebut}
                 />
 
               </>
             )}
           </div>
 
-          {/* Agent IA */}
-          {!showActions && (
-            <div style={{ position:'sticky', top:80 }}>
-              <AgentIA session={session} methode={methode} />
-            </div>
-          )}
+          {/* Agent IA — visible en Analyse ET en Plan d'actions */}
+          <div style={{ position:'sticky', top:80 }}>
+            <AgentIA session={session} methode={methode} />
+          </div>
         </div>
       )}
     </div>

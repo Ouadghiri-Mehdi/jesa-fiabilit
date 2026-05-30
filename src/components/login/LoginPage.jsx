@@ -15,8 +15,7 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    await new Promise(r => setTimeout(r, 400))
-    const ok = login(username.trim(), password)
+    const ok = await login(username.trim(), password)
     setLoading(false)
     if (ok) {
       navigate('/hub', { replace: true })
@@ -56,10 +55,10 @@ export default function LoginPage() {
             </svg>
           </div>
           <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 20, color: '#0f1f3d', letterSpacing: '-0.3px' }}>
-            JESA
+            JESA Reliability Hub
           </div>
           <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 4 }}>
-            
+            Plateforme de fiabilité industrielle
           </div>
         </div>
 

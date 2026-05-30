@@ -54,6 +54,21 @@ const NAV = [
     ],
   },
   {
+    section: 'Intelligence Artificielle',
+    items: [
+      {
+        path: '/ia-solution',
+        label: 'IA Based Solution',
+        icon: (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/>
+            <path d="M22 2 12 12"/><circle cx="19" cy="5" r="3"/>
+          </svg>
+        ),
+      },
+    ],
+  },
+  {
     section: 'Administration',
     items: [
       {
@@ -80,7 +95,7 @@ export default function Sidebar({ collapsed, onToggle }) {
     <aside style={{
       position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 100,
       width: collapsed ? 60 : 236,
-      background: C.navy,
+      background: '#0b2e63',
       display: 'flex', flexDirection: 'column',
       transition: 'width .25s cubic-bezier(.4,0,.2,1)',
       overflow: 'hidden',
@@ -90,7 +105,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       {/* Toggle */}
       <div onClick={onToggle} style={{
         position: 'absolute', top: 18, right: -11, zIndex: 10,
-        width: 22, height: 22, background: C.navy, borderRadius: '50%',
+        width: 22, height: 22, background: '#0b2e63', borderRadius: '50%',
         border: '1.5px solid rgba(255,255,255,.15)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         cursor: 'pointer', color: 'rgba(255,255,255,.6)',
@@ -113,8 +128,8 @@ export default function Sidebar({ collapsed, onToggle }) {
           <text x="0" y="32" fontFamily="Sora,Arial,sans-serif" fontWeight="900" fontSize="38" fill="white" letterSpacing="-1">JESA</text>
         </svg>
         {!collapsed && (
-          <span style={{ marginLeft: 10, fontSize: 9.5, fontWeight: 700, color: 'rgba(255,255,255,.4)', letterSpacing: '1.5px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-            ReliabilityOS
+          <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,.8)', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
+            JESA Reliability Hub
           </span>
         )}
       </div>
@@ -166,30 +181,6 @@ export default function Sidebar({ collapsed, onToggle }) {
         ))}
       </nav>
 
-      {/* User */}
-      <div style={{
-        padding: collapsed ? '14px 0' : '14px 16px',
-        borderTop: '1px solid rgba(255,255,255,.08)',
-        display: 'flex', alignItems: 'center',
-        gap: collapsed ? 0 : 10,
-        justifyContent: collapsed ? 'center' : 'flex-start',
-        flexShrink: 0,
-      }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-          background: 'rgba(255,255,255,.15)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 11, fontWeight: 700, color: '#fff',
-        }}>
-          CH
-        </div>
-        {!collapsed && (
-          <div>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#fff' }}>Chaimae Hamdi</div>
-            <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.45)' }}>Fiabiliste JESA · Jorf</div>
-          </div>
-        )}
-      </div>
     </aside>
   )
 }

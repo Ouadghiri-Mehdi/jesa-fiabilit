@@ -1,9 +1,11 @@
 // src/components/dashboard/DashboardPage.jsx
 // Dashboard Fiabilité — synchronisé avec jesa_arrets + jesa_rca_sessions + jesa_seuils
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import C from '../../tokens/colors'
 import { getStatut, calcCumul, calcFrequence } from '../../hooks/useTUM'
+import useTUM from '../../hooks/useTUM'
+import { api } from '../../lib/api'
 import { DEFAULT_SEUILS } from '../../data/seuils'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -51,10 +53,6 @@ function calcAvancement(s) {
   return 15
 }
 
-function readLS(key, fallback) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback }
-  catch { return fallback }
-}
 
 // ─── Graphiques SVG ───────────────────────────────────────────────────────────
 function ParetoSVGCumul({ items }) {
@@ -251,7 +249,7 @@ function CumulLineChart({ data, seuilN1, seuilN2, title, colorKey }) {
   const yScale = v => pad.top + gH - (v / maxVal) * gH
   const yN1 = yScale(seuilN1)
   const yN2 = yScale(seuilN2)
-  const getColor = val => val >= seuilN2 ? '#AD1010' : val >= seuilN1 ? '#F5DD27' : '#57F527'
+  const getColor = val => val >= seuilN2 ? '#AD1010' : val >= seuilN1 ? '#F5DD27' : '#009929'
   const pts = sorted.map((item, i) => ({ x: pad.left + i * step + step / 2, y: yScale(item[colorKey]), val: item[colorKey], id: item.id }))
   const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
   return (
@@ -500,26 +498,16 @@ function LeadingCard({ abbrev, label, value, unit, sub, color, accent }) {
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [periode, setPeriode] = useState('mois')
-  const [rawArrets,   setRawArrets]   = useState([])
   const [rawSessions, setRawSessions] = useState([])
-  const [seuils,      setSeuils]      = useState(DEFAULT_SEUILS)
   const [lastUpdate,  setLastUpdate]  = useState(null)
 
-  // ── Lecture localStorage
-  const loadFromStorage = () => {
-    setRawArrets(readLS('jesa_arrets', []))
-    setRawSessions(readLS('jesa_rca_sessions', []))
-    const s = readLS('jesa_seuils', null)
-    if (s) setSeuils(s)
-    setLastUpdate(new Date())
-  }
+  const { arrets: rawArrets, seuils } = useTUM()
 
-  useEffect(() => {
-    loadFromStorage()
-    // Rafraîchir si une autre page modifie le localStorage
-    window.addEventListener('storage', loadFromStorage)
-    return () => window.removeEventListener('storage', loadFromStorage)
+  const loadData = useCallback(() => {
+    api.getSessions().then(s => { setRawSessions(s); setLastUpdate(new Date()) }).catch(() => {})
   }, [])
+
+  useEffect(() => { loadData() }, [loadData])
 
   // ── Calcul de toutes les métriques
   const kpi = useMemo(() => {
@@ -690,7 +678,7 @@ export default function DashboardPage() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={loadFromStorage} style={{
+          <button onClick={loadData} style={{
             padding: '6px 12px', borderRadius: 8, border: `1px solid ${C.border}`,
             background: '#fff', cursor: 'pointer', fontSize: 12, color: C.text3,
             fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 5,

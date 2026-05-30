@@ -52,34 +52,13 @@ export default function SaisieManuelle({
   inline = false,
   seuils,
   arretsExistants = [],
-  onSaveSuccess
+  onSaveSuccess,
+  equipmentList = [],
+  causesList: causesFromProps = [],
 }) {
   const today = new Date().toISOString().slice(0, 10)
-  const knownPostesList = (() => {
-    try {
-      const stored = localStorage.getItem('jesa_postes_techniques')
-      return stored ? JSON.parse(stored) : POSTES_TECHNIQUES
-    } catch { return POSTES_TECHNIQUES }
-  })()
-
-  const [causesList, setCausesList] = useState(() => {
-    try {
-      const stored = localStorage.getItem('jesa_causes_list')
-      return stored ? JSON.parse(stored) : CAUSES_ARRET_DEFAUT
-    } catch {
-      return CAUSES_ARRET_DEFAUT
-    }
-  })
-
-  useEffect(() => {
-    const handleStorageChange = (e) => {
-      if (e.key === 'jesa_causes_list' && e.newValue) {
-        try { setCausesList(JSON.parse(e.newValue)) } catch {}
-      }
-    }
-    window.addEventListener('storage', handleStorageChange)
-    return () => window.removeEventListener('storage', handleStorageChange)
-  }, [])
+  const knownPostesList = equipmentList.length > 0 ? equipmentList : POSTES_TECHNIQUES
+  const causesList = causesFromProps.length > 0 ? causesFromProps : CAUSES_ARRET_DEFAUT
 
   const [form, setForm] = useState({
     equipId: '', designation: '', niveauEqSeq: '',
@@ -117,16 +96,45 @@ export default function SaisieManuelle({
   const dureeH = duree ? parseFloat(duree) : 0
   const heuresMarche = duree ? (24 - dureeH).toFixed(1) + 'h' : ''
 
+  // 🔥 CORRECTION : Ne prendre que la session active (OPEN) pour l'historique cumulé
+  // Car une session clôturée ne doit pas s'additionner avec la nouvelle
   const cumulExistant = useMemo(() => {
     if (!form.equipId) return 0
-    return arretsExistants
-      .filter(arret => arret.equipId === form.equipId)
-      .reduce((total, arret) => total + (arret.duration || 0), 0)
+    
+    // Vérifier si les arrêts ont une propriété session_status
+    const hasSessionStatus = arretsExistants.some(a => a.sessionStatus !== undefined)
+    
+    if (hasSessionStatus) {
+      // Ne prendre que les sessions OPEN (actives)
+      return arretsExistants
+        .filter(arret => arret.equipId === form.equipId && arret.sessionStatus === 'OPEN')
+        .reduce((total, arret) => total + (arret.duration || 0), 0)
+    } else {
+      // Fallback : ne prendre que l'arrêt le plus récent (dernière session)
+      const equipArrets = arretsExistants
+        .filter(arret => arret.equipId === form.equipId)
+        .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+      const plusRecente = equipArrets.slice(0, 1)
+      return plusRecente.reduce((total, arret) => total + (arret.duration || 0), 0)
+    }
   }, [form.equipId, arretsExistants])
 
+  // 🔥 CORRECTION : Idem pour la fréquence
   const frequenceExistante = useMemo(() => {
     if (!form.equipId) return 0
-    return arretsExistants.filter(arret => arret.equipId === form.equipId).length
+    
+    const hasSessionStatus = arretsExistants.some(a => a.sessionStatus !== undefined)
+    
+    if (hasSessionStatus) {
+      return arretsExistants
+        .filter(arret => arret.equipId === form.equipId && arret.sessionStatus === 'OPEN')
+        .reduce((s, a) => s + (a.frequence || 1), 0)
+    } else {
+      const equipArrets = arretsExistants
+        .filter(arret => arret.equipId === form.equipId)
+        .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+      return Math.min(equipArrets.slice(0, 1).length, 1)
+    }
   }, [form.equipId, arretsExistants])
 
   const cumulTotal = cumulExistant + dureeH
@@ -150,11 +158,13 @@ export default function SaisieManuelle({
   }
 
   const selectPoste = (p) => {
+    const niv    = p.entite  || p.niveau  || '—'
+    const eqseq  = p.famille || p.eqSeq   || '—'
     setForm(f => ({
       ...f,
       equipId:     p.id,
-      designation: p.designation,
-      niveauEqSeq: `${p.niveau} - ${p.eqSeq}`,
+      designation: p.designation || '',
+      niveauEqSeq: `${niv} - ${eqseq}`,
     }))
     setAutocomplete([])
     setAutocompleteDesig([])
@@ -219,9 +229,10 @@ export default function SaisieManuelle({
       endTime:        end ? end.toISOString() : '',
       dateDebutArret: form.dateDebutArret || '',
       dateFinArret:   form.dateFinArret || '',
-      duration:       dureeH,
+      duration:       end ? (end - start) / 3600000 : dureeH,
       cause:          form.cause.trim(),
       description:    form.description.trim(),
+      sessionStatus: 'OPEN',
     }
 
     onSave(nouvelArret)
@@ -250,13 +261,34 @@ export default function SaisieManuelle({
   )
 
   const InfoCumul = () => {
+    // 🔥 Ne plus afficher l'historique cumulé s'il n'y a pas de session active
     if (!form.equipId || cumulExistant === 0) return null
+    
+    // Vérifier si la session existante est vraiment active
+    const hasActiveSession = arretsExistants.some(
+      a => a.equipId === form.equipId && a.sessionStatus === 'OPEN'
+    )
+    
+    if (!hasActiveSession && arretsExistants.some(a => a.equipId === form.equipId)) {
+      // Une session clôturée existe mais pas active
+      return (
+        <div style={{
+          marginTop: 8, padding: '8px 12px', background: '#fffbeb', borderRadius: 8,
+          fontSize: 11.5, color: '#b45309', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          border: '1px solid #fde68a'
+        }}>
+          <span>⚠️</span>
+          <span>Une session précédente est <strong>clôturée</strong>. Cette nouvelle saisie créera un <strong>nouvel incident indépendant</strong>.</span>
+        </div>
+      )
+    }
+    
     return (
       <div style={{
         marginTop: 8, padding: '8px 12px', background: C.bg2, borderRadius: 8,
         fontSize: 11.5, color: C.text3, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'
       }}>
-        <span>📊 <strong>Historique {form.equipId}</strong> :</span>
+        <span>📊 <strong>Incident en cours sur {form.equipId}</strong> :</span>
         <span>{cumulExistant.toFixed(1)}h cumulées</span>
         <span>•</span>
         <span>{frequenceExistante} arrêt(s)</span>
@@ -302,7 +334,7 @@ export default function SaisieManuelle({
                   <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12, color: C.navy }}>{p.id}</div>
                   <div style={{ fontSize: 11, color: C.text3, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {p.designation}
-                    <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: C.text4 }}>N{p.niveau} · {p.eqSeq}</span>
+                    <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: C.text4 }}>N{p.entite || p.niveau || '—'} · {p.famille || p.eqSeq || '—'}</span>
                   </div>
                 </div>
               ))}
@@ -342,7 +374,7 @@ export default function SaisieManuelle({
                   </div>
                   <div style={{ fontFamily: 'monospace', fontSize: 10.5, color: C.text3, marginTop: 2 }}>
                     {p.id}
-                    <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: C.text4 }}>N{p.niveau} · {p.eqSeq}</span>
+                    <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: C.text4 }}>N{p.entite || p.niveau || '—'} · {p.famille || p.eqSeq || '—'}</span>
                   </div>
                 </div>
               ))}
@@ -494,7 +526,6 @@ export default function SaisieManuelle({
       )}
 
       {(form.heureArret && form.heureRedemarrage && form.equipId) && (() => {
-        // Déterminer la cause précise du dépassement de seuil
         const triggerCumulN2  = seuils && cumulTotal >= seuils.n2.cumul
         const triggerFreqN2   = seuils && frequenceTotal >= seuils.n2.frequence
         const triggerCumulN1  = seuils && cumulTotal >= seuils.n1.cumul
@@ -579,7 +610,6 @@ export default function SaisieManuelle({
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
             </svg>
-            {/* ── TITRE CORRIGÉ ── */}
             <div style={{ fontWeight: 700, fontSize: 14, color: '#fff' }}>Rapport d'arrêt</div>
           </div>
           <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'rgba(255,255,255,0.8)', fontSize: 18 }}>✕</button>

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import C from '../../tokens/colors'
-import useTUM, { calcCumul, calcFrequence, getStatut } from '../../hooks/useTUM'
+import useTUM from '../../hooks/useTUM'
 import useNotifs from '../../hooks/useNotifs'
 import AlertBanner from '../shared/AlertBanner'
 import Notif from '../shared/Notif'
@@ -10,78 +10,6 @@ import ImportExcel from './ImportExcel'
 import SaisieManuelle from './SaisieManuelle'
 import BadActors from './BadActors'
 import SeuilsModal from './SeuilsModal'
-import { INITIAL_SESSIONS } from '../../data/rcaSessions'
-
-// ─── Synchronise les équipements en alerte vers les sessions RCA ─────────────
-function syncAlertsToRCA(updatedArrets, nouveauxArrets, seuils) {
-  let sessions = []
-  try {
-    const stored = localStorage.getItem('jesa_rca_sessions')
-    sessions = stored ? JSON.parse(stored) : [...INITIAL_SESSIONS]
-  } catch {
-    sessions = [...INITIAL_SESSIONS]
-  }
-
-  const affectedIds = [...new Set(nouveauxArrets.map(a => a.equipId))]
-  let changed = false
-
-  affectedIds.forEach(equipId => {
-    const trigger = nouveauxArrets.find(a => a.equipId === equipId)
-      || updatedArrets.filter(a => a.equipId === equipId).slice(-1)[0]
-
-    // Session active déjà existante → mettre à jour causeArret si manquant
-    const existingIdx = sessions.findIndex(s => s.equipId === equipId && s.statut !== 'cloturee')
-    if (existingIdx !== -1) {
-      if (!sessions[existingIdx].causeArret && trigger?.cause) {
-        sessions[existingIdx] = { ...sessions[existingIdx], causeArret: trigger.cause }
-        changed = true
-      }
-      return
-    }
-
-    // Vérifier si les seuils sont dépassés pour créer une nouvelle session
-    const cumulN2 = calcCumul(updatedArrets, equipId, seuils.n2.horizon)
-    const freqN2  = calcFrequence(updatedArrets, equipId, seuils.n2.horizon)
-    const isAlert = getStatut(cumulN2, freqN2, seuils) === 'alert'
-
-    const cumulN1 = calcCumul(updatedArrets, equipId, seuils.n1.horizon)
-    const freqN1  = calcFrequence(updatedArrets, equipId, seuils.n1.horizon)
-    const isWatch = getStatut(cumulN1, freqN1, seuils) === 'watch'
-
-    if (!isAlert && !isWatch) return
-
-    const niveau = isAlert ? 2 : 1
-    const today = new Date().toISOString().slice(0, 10)
-    const id = `RCA-${today.replace(/-/g, '')}-${Math.floor(Math.random() * 900 + 100)}`
-
-    sessions.push({
-      id,
-      equipId,
-      zone: trigger?.zone || '',
-      dateOuverture: today,
-      niveau,
-      source: 'TUM',
-      type: 'equipement',
-      responsable: '',
-      cumulArret: isAlert ? cumulN2 : cumulN1,
-      frequence: isAlert ? freqN2 : freqN1,
-      tauxPanne: 0,
-      disponibilite: 100,
-      participants: [],
-      statut: 'non-commencee',
-      methode: niveau === 2 ? '5why' : 'kaizen',
-      phenomene: trigger?.description || trigger?.cause || '',
-      causeArret: trigger?.cause || '',
-      noeuds: [],
-      actionsGenerees: [],
-    })
-    changed = true
-  })
-
-  if (changed) {
-    localStorage.setItem('jesa_rca_sessions', JSON.stringify(sessions))
-  }
-}
 
 export default function TUMPage() {
   const navigate = useNavigate()
@@ -89,15 +17,13 @@ export default function TUMPage() {
   const { notifs, showNotif, dismissNotif } = useNotifs()
   const {
     arrets, seuils, alertEquips,
-    equipmentList, knownEquipIds, updateEquipmentList,
+    equipmentList, knownEquipIds, causesList, updateEquipmentList, updateCausesList,
     ajouterArrets, sauvegarderSeuils,
   } = useTUM()
 
-  const [activeView, setActiveView] = useState('data')
+  const [activeView,       setActiveView]       = useState('data')
   const [showSaisieInline, setShowSaisieInline] = useState(false)
-  const [showSeuils, setShowSeuils] = useState(false)
-
-  // État pour la vue dans Bad Actors
+  const [showSeuils,       setShowSeuils]       = useState(false)
   const [badActorsViewMode, setBadActorsViewMode] = useState('pareto')
 
   useEffect(() => {
@@ -117,25 +43,33 @@ export default function TUMPage() {
     navigate('/tum', { replace: true })
   }
 
-  const handleImport = (nouveaux) => {
-    const updatedArrets = [...arrets, ...nouveaux]
-    ajouterArrets(nouveaux)
-    syncAlertsToRCA(updatedArrets, nouveaux, seuils)
-    showNotif('✅ Import réussi', `${nouveaux.length} arrêt(s) importé(s) dans le TUM`, 'green')
+  const handleImport = async (nouveaux) => {
+    try {
+      await ajouterArrets(nouveaux)
+      showNotif('✅ Import réussi', `${nouveaux.length} arrêt(s) importé(s) dans le TUM`, 'green')
+    } catch (err) {
+      showNotif('Erreur import', err.message, 'red')
+    }
   }
 
-  const handleSaisie = (arret) => {
-    const updatedArrets = [...arrets, arret]
-    ajouterArrets([arret])
-    syncAlertsToRCA(updatedArrets, [arret], seuils)
-    showNotif('✅ Arrêt enregistré', `${arret.equipId} · ${arret.duration}h archivé`, 'blue')
-    setShowSaisieInline(false)
+  const handleSaisie = async (arret) => {
+    try {
+      await ajouterArrets([arret])
+      showNotif('✅ Arrêt enregistré', `${arret.equipId} · ${arret.duration}h archivé`, 'blue')
+      setShowSaisieInline(false)
+    } catch (err) {
+      showNotif('Erreur', err.message, 'red')
+    }
   }
 
-  const handleSeuils = (nouveauxSeuils) => {
-    sauvegarderSeuils(nouveauxSeuils)
-    showNotif('✅ Seuils sauvegardés', 'Actifs pour le prochain calcul TUM', 'blue')
-    handleCloseSeuils()
+  const handleSeuils = async (nouveauxSeuils) => {
+    try {
+      await sauvegarderSeuils(nouveauxSeuils)
+      showNotif('✅ Seuils sauvegardés', 'Actifs pour le prochain calcul TUM', 'blue')
+      handleCloseSeuils()
+    } catch (err) {
+      showNotif('Erreur', err.message, 'red')
+    }
   }
 
   const handleLancerRCA = (equipId, niveau = 2) => {
@@ -153,6 +87,7 @@ export default function TUMPage() {
           onSave={handleSeuils}
           showNotif={showNotif}
           onUpdateEquipmentList={updateEquipmentList}
+          onUpdateCausesList={updateCausesList}
         />
       )}
 
@@ -204,6 +139,7 @@ export default function TUMPage() {
           <ImportExcel
             onImport={handleImport}
             showNotif={showNotif}
+            equipmentList={equipmentList}
           />
 
           {!showSaisieInline && (
@@ -250,6 +186,8 @@ export default function TUMPage() {
               onSave={handleSaisie}
               seuils={seuils}
               arretsExistants={arrets}
+              equipmentList={equipmentList}
+              causesList={causesList}
             />
           )}
         </div>
