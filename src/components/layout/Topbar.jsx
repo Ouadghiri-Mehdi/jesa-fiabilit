@@ -1,9 +1,24 @@
 // src/components/layout/Topbar.jsx
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import C from '../../tokens/colors'
 import Button from '../shared/Button'
-import { useAuth, getNewClosedRCAsCount, markNotifSeen } from '../../auth/AuthContext'
+import { api } from '../../lib/api'
+import { useAuth, getNewClosedRCAsCount, getClosedRcaEvent, markNotifSeen } from '../../auth/AuthContext'
+
+function getGlobalClosedSeenAt(userId) {
+  if (typeof window === 'undefined' || !userId) return 0
+  return Number(localStorage.getItem(`jesa_closed_rca_global_seen_at_${userId}`) || 0)
+}
+
+function setGlobalClosedSeenAt(userId, value) {
+  if (typeof window === 'undefined' || !userId) return
+  localStorage.setItem(`jesa_closed_rca_global_seen_at_${userId}`, String(value))
+}
+
+function getClosedSessionTimestamp(session) {
+  return new Date(session.dateHeureFin || session.updatedAt || session.createdAt || 0).getTime()
+}
 
 const PAGE_META = {
   '/tum':        { title: 'TUM — Time Usage Model',  sub: 'Suivi des arrêts & calcul des cumuls' },
@@ -37,11 +52,135 @@ export default function Topbar() {
   const isTUMPage    = key === '/tum'
   const isMainRCAPage = pathname === '/rca'
 
-  const notifCount = user ? getNewClosedRCAsCount(user.siteKey) : 0
+  const [notifCount, setNotifCount] = useState(0)
+  const [latestNotifEvent, setLatestNotifEvent] = useState(null)
+  const [seenAt, setSeenAt] = useState(0)
+  const [showNotifPopup, setShowNotifPopup] = useState(false)
+  const prevNotifCount = useRef(0)
+  const popupTimerRef = useRef(null)
+  const isFirstRender = useRef(true)
   const initials   = user?.username?.slice(0, 2).toUpperCase() || '??'
 
+  const refreshNotifications = useCallback(async () => {
+    if (!user) {
+      setNotifCount(0)
+      setLatestNotifEvent(null)
+      return
+    }
+
+    const currentSeenAt = getGlobalClosedSeenAt(user.id)
+    setSeenAt(currentSeenAt)
+
+    try {
+      const sessions = await api.getClosedSessionsAll()
+      const pending = sessions
+        .filter(s => String(s.siteId) !== String(user.site_id))
+        .map(s => ({ ...s, ts: getClosedSessionTimestamp(s) }))
+        .filter(s => s.ts > currentSeenAt)
+        .sort((a, b) => b.ts - a.ts)
+
+      const nextCount = pending.length
+      setNotifCount(nextCount)
+
+      if (nextCount > 0) {
+        const latest = pending[0]
+        setLatestNotifEvent({
+          details: {
+            site: latest.siteName || latest.siteId || null,
+            posteTechnique: latest.posteTechnique || latest.equipId || null,
+            designation: latest.designation || null,
+            zone: latest.zone || null,
+          },
+        })
+        return
+      }
+    } catch (err) {
+      console.error('refreshNotifications:', err)
+    }
+
+    if (user) {
+      const event = getClosedRcaEvent(user.siteKey, user.id)
+      setLatestNotifEvent(event)
+      setNotifCount(getNewClosedRCAsCount(user.siteKey, user.id))
+    }
+  }, [user?.id, user?.site_id, user?.siteKey])
+
+  useEffect(() => {
+    refreshNotifications()
+  }, [refreshNotifications])
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      refreshNotifications()
+    }
+    window.addEventListener('jesaClosedRcaNotification', handleUpdate)
+    window.addEventListener('storage', handleUpdate)
+    return () => {
+      window.removeEventListener('jesaClosedRcaNotification', handleUpdate)
+      window.removeEventListener('storage', handleUpdate)
+    }
+  }, [refreshNotifications])
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      prevNotifCount.current = notifCount
+      return
+    }
+
+    if (notifCount > prevNotifCount.current) {
+      setShowNotifPopup(true)
+      if (popupTimerRef.current) {
+        window.clearTimeout(popupTimerRef.current)
+      }
+      popupTimerRef.current = window.setTimeout(() => {
+        setShowNotifPopup(false)
+        popupTimerRef.current = null
+      }, 10000)
+
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext
+        if (AudioContext) {
+          const ctx = new AudioContext()
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.type = 'sine'
+          osc.frequency.setValueAtTime(980, ctx.currentTime)
+          osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.22)
+          gain.gain.setValueAtTime(0.16, ctx.currentTime)
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22)
+          osc.connect(gain)
+          gain.connect(ctx.destination)
+          osc.start()
+          osc.stop(ctx.currentTime + 0.22)
+          osc.onended = () => ctx.close().catch(() => {})
+        }
+      } catch {
+        // audio not supported or blocked
+      }
+    }
+    prevNotifCount.current = notifCount
+  }, [notifCount])
+
+  useEffect(() => {
+    if (!user) return undefined
+    const interval = window.setInterval(refreshNotifications, 8000)
+    return () => window.clearInterval(interval)
+  }, [refreshNotifications, user?.id])
+
   function handleNotifClick() {
-    if (user) markNotifSeen(user.siteKey)
+    if (user) {
+      markNotifSeen(user.siteKey, user.id)
+      setGlobalClosedSeenAt(user.id, Date.now())
+      setSeenAt(Date.now())
+      setNotifCount(0)
+      setLatestNotifEvent(null)
+      setShowNotifPopup(false)
+      if (popupTimerRef.current) {
+        window.clearTimeout(popupTimerRef.current)
+        popupTimerRef.current = null
+      }
+    }
     navigate('/global')
   }
 
@@ -112,43 +251,65 @@ export default function Topbar() {
         )}
 
         {/* Notification bell */}
-        <button
-          onClick={handleNotifClick}
-          title="Notifications — RCA clôturées (autres sites)"
-          style={{
-            position: 'relative',
-            width: 38, height: 38, borderRadius: '50%',
-            border: `1.5px solid ${notifCount > 0 ? '#059669' : C.border2}`,
-            background: notifCount > 0 ? '#f0fdf4' : '#fff',
-            cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: notifCount > 0 ? '#059669' : C.text3,
-            transition: 'all .15s',
-            marginLeft: (isTUMPage || isMainRCAPage) ? 4 : 0,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = '#059669'; e.currentTarget.style.color = '#059669' }}
-          onMouseLeave={e => {
-            e.currentTarget.style.borderColor = notifCount > 0 ? '#059669' : C.border2
-            e.currentTarget.style.color = notifCount > 0 ? '#059669' : C.text3
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>
-          {notifCount > 0 && (
-            <span style={{
-              position: 'absolute', top: -3, right: -3,
-              background: '#ef4444', color: '#fff',
-              borderRadius: 99, minWidth: 16, height: 16,
+        <div style={{ position: 'relative', display: 'inline-block' }}>
+          <button
+            onClick={handleNotifClick}
+            title="Notifications — RCA clôturées (autres sites)"
+            style={{
+              position: 'relative',
+              width: 38, height: 38, borderRadius: '50%',
+              border: `1.5px solid ${notifCount > 0 ? '#dc2626' : C.border2}`,
+              background: notifCount > 0 ? '#fef2f2' : '#fff',
+              cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 9, fontWeight: 700, padding: '0 3px',
-              border: '1.5px solid #fff',
+              color: notifCount > 0 ? '#dc2626' : C.text3,
+              transition: 'all .15s',
+              marginLeft: (isTUMPage || isMainRCAPage) ? 4 : 0,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = notifCount > 0 ? '#dc2626' : '#0f2a52'; e.currentTarget.style.color = notifCount > 0 ? '#dc2626' : '#0f2a52' }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = notifCount > 0 ? '#dc2626' : C.border2
+              e.currentTarget.style.color = notifCount > 0 ? '#dc2626' : C.text3
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            {notifCount > 0 && (
+              <span style={{
+                position: 'absolute', top: -3, right: -3,
+                background: '#ef4444', color: '#fff',
+                borderRadius: 99, minWidth: 16, height: 16,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 9, fontWeight: 700, padding: '0 3px',
+                border: '1.5px solid #fff',
+              }}>
+                {notifCount}
+              </span>
+            )}
+          </button>
+          {showNotifPopup && notifCount > 0 && latestNotifEvent?.details && (
+            <div style={{
+              position: 'absolute', top: 46, right: 0,
+              width: 300,
+              background: '#fff',
+              border: '1px solid #e2e8f0',
+              borderRadius: 14,
+              padding: 14,
+              boxShadow: '0 18px 40px rgba(15,23,42,.16)',
+              zIndex: 60,
             }}>
-              {notifCount}
-            </span>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 8 }}>Nouvelle RCA clôturée</div>
+              <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.6 }}>
+                <div><strong>Site :</strong> {latestNotifEvent.details.site || user.site || '—'}</div>
+                <div><strong>Poste technique :</strong> {latestNotifEvent.details.posteTechnique || '—'}</div>
+                {latestNotifEvent.details.designation && <div><strong>Désignation :</strong> {latestNotifEvent.details.designation}</div>}
+                {latestNotifEvent.details.zone && <div><strong>Zone :</strong> {latestNotifEvent.details.zone}</div>}
+              </div>
+            </div>
           )}
-        </button>
+        </div>
 
         {/* User avatar + dropdown */}
         <div ref={avatarRef} style={{ position: 'relative', marginLeft: 4 }}>

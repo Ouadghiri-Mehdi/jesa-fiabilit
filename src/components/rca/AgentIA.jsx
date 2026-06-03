@@ -5,6 +5,7 @@
 
 import { useState, useRef } from 'react'
 import { api } from '../../lib/api'
+import C from '../../tokens/colors'
 
 const RobotSVG = ({ size = 26 }) => (
   <svg width={size} height={size} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -106,16 +107,62 @@ const INITIAL_MESSAGES_KAIZEN = [
 ]
 
 const QUICK_ACTIONS_5WHY = [
-  { key: 'causes',  label: 'Causes probables',  bg: '#eff6ff', border: '#bfdbfe', color: '#1d4ed8', icon: 'ℹ️' },
-  { key: 'actions', label: 'Recommandations',   bg: '#e6f9f3', border: '#6ee7c8', color: '#059669', icon: '✅' },
-  { key: 'resume',  label: 'Résumer WHY',        bg: '#faf5ff', border: '#ddd6fe', color: '#6d28d9', icon: '📝' },
+  { key: 'causes',  label: 'Causes probables',  bg: C.bg, border: C.border, color: C.text3,
+    icon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.text3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v.01" />
+        <path d="M11 12h1v4" />
+      </svg>
+    ) },
+  { key: 'actions', label: 'Recommandations',   bg: C.bg, border: C.border, color: C.text3,
+    icon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.text3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 11l2 2 4-4" />
+        <path d="M21 12v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h11" />
+      </svg>
+    ) },
+  { key: 'resume',  label: 'Résumer WHY',       bg: C.bg, border: C.border, color: C.text3,
+    icon: (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.text3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15V7a2 2 0 0 0-2-2H7" />
+        <rect x="3" y="7" width="14" height="14" rx="2" />
+        <line x1="7" y1="11" x2="13" y2="11" />
+        <line x1="7" y1="15" x2="13" y2="15" />
+      </svg>
+    ) },
 ]
 
 const QUICK_ACTIONS_KAIZEN = [
-  { key: 'pheno',   label: 'PROBLEM',         bg: '#f1f5f9', border: '#94a3b8', color: '#64748b',  badge: 'P',  badgeBg: '#94a3b8' },
-  { key: 'actions', label: 'POSSIBLE CAUSES', bg: '#f1f5f9', border: '#94a3b8', color: '#64748b',  badge: 'PC', badgeBg: '#94a3b8' },
-  { key: 'racine',  label: 'VERIFICATION',    bg: '#f1f5f9', border: '#94a3b8', color: '#64748b',  badge: 'V',  badgeBg: '#94a3b8' },
-  { key: 'causes',  label: 'ACTIONS',         bg: '#f1f5f9', border: '#94a3b8', color: '#64748b',  badge: 'A',  badgeBg: '#94a3b8' },
+  { key: 'pheno',   label: 'PROBLEM',         bg: C.bg, border: C.border, color: C.text3,  badge: 'P',  badgeBg: C.text4,
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.text3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <circle cx="12" cy="17" r="1" />
+      </svg>
+    ) },
+  { key: 'actions', label: 'POSSIBLE CAUSES', bg: C.bg, border: C.border, color: C.text3,  badge: 'PC', badgeBg: C.text4,
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.text3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="7" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+    ) },
+  { key: 'racine',  label: 'VERIFICATION',    bg: C.bg, border: C.border, color: C.text3,  badge: 'V',  badgeBg: C.text4,
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.text3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
+        <path d="M21 12v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6" />
+      </svg>
+    ) },
+  { key: 'causes',  label: 'ACTIONS',         bg: C.bg, border: C.border, color: C.text3,  badge: 'A',  badgeBg: C.text4,
+    icon: (
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.text3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 12h18" />
+        <path d="M6 6l6 6-6 6" />
+      </svg>
+    ) },
 ]
 
 export default function AgentIA({ session, methode }) {
@@ -317,7 +364,7 @@ export default function AgentIA({ session, methode }) {
 
       {/* ── Boutons rapides */}
       <div style={{ padding: '10px 12px', borderTop: '1px solid #e8edf5', display: 'flex', flexWrap: 'wrap', gap: 5, background: 'linear-gradient(to bottom,#f8fafd,#fff)', flexShrink: 0 }}>
-        <div style={{ width: '100%', fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 4 }}>
+        <div style={{ width: '100%', fontSize: 9, fontWeight: 700, color: C.navy, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 4 }}>
           Actions {isKaizen ? 'QUICK KAIZEN' : ''} rapides
         </div>
         {quickActions.map(q => (

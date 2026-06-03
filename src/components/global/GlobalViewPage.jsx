@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { api } from '../../lib/api'
+import C from '../../tokens/colors'
 
 
 const SITE_COLORS = {
@@ -26,6 +27,18 @@ function formatDate(iso) {
 function formatDateTime(iso) {
   if (!iso) return '—'
   try { return new Date(iso).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) } catch { return '—' }
+}
+function getGlobalTrackingSeenAt(userId) {
+  if (typeof window === 'undefined' || !userId) return 0
+  return Number(localStorage.getItem(`jesa_global_tracking_seen_at_${userId}`) || 0)
+}
+function setGlobalTrackingSeenAt(userId, value) {
+  if (typeof window === 'undefined' || !userId) return
+  localStorage.setItem(`jesa_global_tracking_seen_at_${userId}`, String(value))
+}
+function getClosedSessionTimestamp(session) {
+  if (!session) return 0
+  return new Date(session.dateHeureFin || session.updatedAt || session.createdAt || 0).getTime()
 }
 function calcDuree(debut, fin) {
   if (!debut || !fin) return '—'
@@ -367,10 +380,10 @@ function ReadOnlyKaizen({ noeuds }) {
 }
 
 const STATUT_ACTION_CFG = {
-  'cloture':      { label: 'Clôturé',      bg: '#ecfdf5', color: '#059669' },
-  'en-cours':     { label: 'En cours',     bg: '#eff6ff', color: '#1d4ed8' },
-  'retard':       { label: 'En retard',    bg: '#fff7ed', color: '#ea580c' },
-  'pas-commence': { label: 'Non commencé', bg: '#fef2f2', color: '#dc2626' },
+  'cloture':      { label: 'Clôturé',      bg: C.greenBg,  color: C.green },
+  'en-cours':     { label: 'En cours',     bg: C.orangeBg, color: C.orange },
+  'retard':       { label: 'En retard',    bg: '#fff7ed',  color: '#ea580c' },
+  'pas-commence': { label: 'Non commencé', bg: C.redBg,    color: C.red },
 }
 
 // ── Tableau actions lecture seule ────────────────────────────────────────────
@@ -378,7 +391,7 @@ function ReadOnlyActions({ actions, rcaStartDate }) {
   if (!actions?.length) return null
   const rcaDay = rcaStartDate ? rcaStartDate.slice(0, 10) : null
   const COLS = '40px 1fr 1fr 110px 140px 120px 110px'
-  const HEADS = ['#', 'Cause racine', 'Action corrective', 'N° OT', 'Participant', 'Délai', 'Statut']
+  const HEADS = ['Rang', 'Cause racine', 'Action corrective', 'N° OT', 'Participant', 'Délai', 'Statut']
   return (
     <div style={{ background:'#fff', border:'1.5px solid #e2e8f0', borderRadius:10, overflow:'hidden' }}>
         <div style={{ display:'grid', gridTemplateColumns:COLS, background:'#f8fafc', borderBottom:'1.5px solid #e2e8f0', padding:'0 12px' }}>
@@ -422,9 +435,37 @@ function ReadOnlyActions({ actions, rcaStartDate }) {
 }
 
 function SectionTitle({ children, icon }) {
+  const getIconShape = (type) => {
+    const common = { width:16, height:16, fill:'none', stroke:'#1f2937', strokeWidth:1.8, strokeLinecap:'round', strokeLinejoin:'round' }
+    switch (type) {
+      case '⚠️':
+      case 'warning':
+        return (
+          <svg {...common} viewBox="0 0 24 24"><path d="M12 4.5 4.5 19h15L12 4.5z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r="1"/></svg>
+        )
+      case '🌳':
+      case 'tree':
+        return (
+          <svg {...common} viewBox="0 0 24 24"><path d="M12 3c-2.2 0-4 1.8-4 4 0 1.2.6 2.2 1.5 2.8L9 11H6.5C5.7 11 5 11.7 5 12.5S5.7 14 6.5 14H9v5h6v-5h2.5c.8 0 1.5-.7 1.5-1.5S18.3 11 17.5 11H15l-.5-1.2C15.4 9.2 16 8.2 16 7c0-2.2-1.8-4-4-4z"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        )
+      case '📋':
+      case 'actions':
+        return (
+          <svg {...common} viewBox="0 0 24 24"><path d="M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
+        )
+      case '👥':
+      case 'participants':
+        return (
+          <svg {...common} viewBox="0 0 24 24"><path d="M8 9a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/><path d="M16 9a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/><path d="M4 21c0-3.3 2.7-6 6-6h4c3.3 0 6 2.7 6 6"/></svg>
+        )
+      default:
+        return null
+    }
+  }
+
   return (
     <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:14 }}>
-      {icon && <span style={{ fontSize:15 }}>{icon}</span>}
+      {icon && <span style={{ display:'inline-flex', width:20, height:20 }}>{getIconShape(icon)}</span>}
       <span style={{ fontSize:11, fontWeight:800, color:'#475569', textTransform:'uppercase', letterSpacing:'.9px', whiteSpace:'nowrap' }}>{children}</span>
       <div style={{ flex:1, height:1, background:'linear-gradient(90deg,#e2e8f0 0%,transparent 100%)' }} />
     </div>
@@ -547,13 +588,19 @@ function GlobalRCADetail({ rca: initialRca, onClose }) {
 
             {/* Dates */}
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-              <div style={{ background:'#fff', borderRadius:10, padding:'13px 16px', border:'1px solid #e2e8f0', borderTop:'3px solid #3b82f6' }}>
-                <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:6 }}>Date heure début</div>
-                <div style={{ fontSize:14, fontWeight:700, color:'#1d4ed8' }}>{formatDateTime(rca.dateHeureDebut)}</div>
+              <div style={{ background:'#eef2f7', borderRadius:10, padding:'16px', border:'1px solid #d1d5db', borderLeft:'4px solid #0f1f3d' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:8 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f1f3d" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16"/><path d="M8 2v5"/><path d="M16 2v5"/></svg>
+                  Date heure début
+                </div>
+                <div style={{ fontSize:14, fontWeight:700, color:'#0f1f3d' }}>{formatDateTime(rca.dateHeureDebut)}</div>
               </div>
-              <div style={{ background:'#fff', borderRadius:10, padding:'13px 16px', border:'1px solid #e2e8f0', borderTop:'3px solid #059669' }}>
-                <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:6 }}>Date heure fin (clôture)</div>
-                <div style={{ fontSize:14, fontWeight:700, color:'#059669' }}>{formatDateTime(rca.dateHeureFin)}</div>
+              <div style={{ background:'#eef2f7', borderRadius:10, padding:'16px', border:'1px solid #d1d5db', borderLeft:'4px solid #0f1f3d' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'.7px', marginBottom:8 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f1f3d" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16"/><path d="M8 2v5"/><path d="M16 2v5"/></svg>
+                  Date heure fin (clôture)
+                </div>
+                <div style={{ fontSize:14, fontWeight:700, color:'#0f1f3d' }}>{formatDateTime(rca.dateHeureFin)}</div>
               </div>
             </div>
 
@@ -583,30 +630,6 @@ function GlobalRCADetail({ rca: initialRca, onClose }) {
               <div>
                 <SectionTitle icon="📋">Plan d'actions correctives</SectionTitle>
                 <ReadOnlyActions actions={actions} rcaStartDate={rca.dateHeureDebut} />
-              </div>
-            )}
-
-            {/* Participants */}
-            {participants.length > 0 && (
-              <div>
-                <SectionTitle icon="👥">Participants ({participants.length})</SectionTitle>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
-                  {participants.map((p, i) => {
-                    const nom  = typeof p === 'string' ? p : (p.nom || '?')
-                    const fonc = typeof p === 'object' ? (p.fonction || '') : ''
-                    const ini  = nom.trim().split(/\s+/).map(w => w[0] || '').join('').slice(0,2).toUpperCase()
-                    const col  = COLORS_PART[i % COLORS_PART.length]
-                    return (
-                      <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 14px', background:'#fff', border:'1.5px solid #e2e8f0', borderRadius:10, boxShadow:'0 1px 3px rgba(15,30,53,.05)' }}>
-                        <div style={{ width:34, height:34, borderRadius:'50%', background:col, color:'#fff', fontSize:12, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{ini}</div>
-                        <div>
-                          <div style={{ fontSize:13, fontWeight:600, color:'#1e293b' }}>{nom}</div>
-                          {fonc && <div style={{ fontSize:11, color:'#94a3b8', marginTop:1 }}>{fonc}</div>}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
               </div>
             )}
 
@@ -647,10 +670,13 @@ const PART_COLORS = ['#1a3a6b','#059669','#d97706','#dc2626','#7c3aed','#0891b2'
 export default function GlobalViewPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [filterSite,  setFilterSite]  = useState('all')
+  const userSite = user?.site || null
+  const [filterSite,  setFilterSite]  = useState('others')
   const [search,      setSearch]      = useState('')
   const [selectedRCA, setSelectedRCA] = useState(null)
   const [allRCAs,     setAllRCAs]     = useState([])
+  const [globalNewCount, setGlobalNewCount] = useState(0)
+  const [globalSeenAt, setGlobalSeenAt] = useState(() => user?.id ? getGlobalTrackingSeenAt(user.id) : 0)
 
   const loadRCAs = useCallback(() => {
     Promise.all([api.getClosedSessionsAll(), api.getEquipements()])
@@ -670,24 +696,48 @@ export default function GlobalViewPage() {
           equipFamille: equipMap[s.equipId]?.famille     || null,
           _site:        s.siteName || s.siteId || '—',
         }))
+
+        const seenAt = user?.id ? getGlobalTrackingSeenAt(user.id) : 0
+        const latestTs = sessions.reduce((max, s) => Math.max(max, getClosedSessionTimestamp(s)), 0)
+
+        if (user?.id) {
+          setGlobalTrackingSeenAt(user.id, latestTs || Date.now())
+          setGlobalSeenAt(latestTs || Date.now())
+          setGlobalNewCount(0)
+        } else {
+          const newCount = seenAt
+            ? sessions.filter(s => String(s.siteId) !== String(user?.site_id) && getClosedSessionTimestamp(s) > seenAt).length
+            : 0
+          setGlobalNewCount(newCount)
+        }
+
         setAllRCAs(closed)
       }).catch(() => {})
-  }, [])
+  }, [user?.id, user?.site_id])
 
   useEffect(() => { loadRCAs() }, [loadRCAs])
 
   useEffect(() => {
     window.addEventListener('focus', loadRCAs)
-    return () => window.removeEventListener('focus', loadRCAs)
+    window.addEventListener('jesaClosedRcaNotification', loadRCAs)
+    window.addEventListener('storage', loadRCAs)
+    return () => {
+      window.removeEventListener('focus', loadRCAs)
+      window.removeEventListener('jesaClosedRcaNotification', loadRCAs)
+      window.removeEventListener('storage', loadRCAs)
+    }
   }, [loadRCAs])
 
-  const sites = useMemo(() => {
-    const s = new Set(allRCAs.map(r => r._site).filter(Boolean))
-    return ['all', ...Array.from(s)]
-  }, [allRCAs])
+  const siteOptions = useMemo(() => {
+    const s = new Set(allRCAs.map(r => r._site).filter(Boolean).filter(site => site !== userSite))
+    return ['others', ...Array.from(s)]
+  }, [allRCAs, userSite])
 
   const filtered = useMemo(() => {
-    let list = filterSite === 'all' ? allRCAs : allRCAs.filter(r => r._site === filterSite)
+    let list = allRCAs.filter(r => userSite ? r._site !== userSite : true)
+    if (filterSite !== 'others') {
+      list = list.filter(r => r._site === filterSite)
+    }
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(r =>
@@ -698,10 +748,16 @@ export default function GlobalViewPage() {
       )
     }
     return list
-  }, [allRCAs, filterSite, search])
+  }, [allRCAs, filterSite, search, userSite])
 
   const nbArbre  = allRCAs.filter(r => r.methode === '5why'   || r.methode === 2 || r.methode === '2').length
   const nbKaizen = allRCAs.filter(r => r.methode === 'kaizen' || r.methode === 1 || r.methode === '1').length
+
+  useEffect(() => {
+    if (!selectedRCA) return undefined
+    const timer = window.setTimeout(() => setSelectedRCA(null), 10000)
+    return () => window.clearTimeout(timer)
+  }, [selectedRCA])
 
   function handleLogout() { logout(); navigate('/login', { replace:true }) }
   const initials = user?.username?.slice(0,2).toUpperCase() || '??'
@@ -727,14 +783,20 @@ export default function GlobalViewPage() {
             HUB
           </button>
           <div style={{ width:1, height:28, background:'#e2e8f0' }} />
-          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
             <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:32, height:32, borderRadius:8, background:'#eef2f9', border:'1.5px solid #c7d4eb' }}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1a3a6b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><polyline points="9 12 11 14 15 10"/></svg>
             </span>
             <div>
               <div style={{ fontFamily:"'Sora',sans-serif", fontWeight:800, fontSize:14.5, color:'#0f1f3d', letterSpacing:'-.1px' }}>Vue Globale — RCA Clôturées</div>
-              <div style={{ fontSize:11, color:'#94a3b8', marginTop:1 }}>Lecture seule · Synchronisée automatiquement · Cliquez sur une ligne pour consulter</div>
+              <div style={{ fontSize:11, color:'#94a3b8', marginTop:1 }}>Lecture seule · Autres sites uniquement · Cliquez sur une ligne pour consulter</div>
             </div>
+            {globalNewCount > 0 && (
+              <span style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:999, background:'#fef2f2', border:'1px solid #fecaca', color:'#c2410c', fontSize:12, fontWeight:700 }}>
+                <span style={{ width:7, height:7, borderRadius:'50%', background:'#dc2626', display:'inline-block' }} />
+                {globalNewCount} nouvelle{globalNewCount > 1 ? 's' : ''}
+              </span>
+            )}
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
@@ -785,8 +847,8 @@ export default function GlobalViewPage() {
               <label style={{ fontSize:12.5, color:'#64748b', fontWeight:500, whiteSpace:'nowrap' }}>Site :</label>
               <select value={filterSite} onChange={e => setFilterSite(e.target.value)}
                 style={{ padding:'7px 12px', borderRadius:8, border:'1.5px solid #e2e8f0', fontSize:12.5, color:'#374151', background:'#fff', cursor:'pointer', outline:'none', fontFamily:"'DM Sans',sans-serif" }}>
-                <option value="all">Tous les sites</option>
-                {sites.filter(s => s !== 'all').map(s => <option key={s} value={s}>{s}</option>)}
+                <option value="others">Tous les autres sites</option>
+                {siteOptions.filter(s => s !== 'others').map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           </div>

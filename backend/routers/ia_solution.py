@@ -11,8 +11,9 @@ from auth import get_current_user
 
 router = APIRouter(prefix="/api/ia", tags=["IA Solution"])
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL   = "llama-3.1-8b-instant"
+GROQ_API_KEY        = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL          = "llama-3.1-8b-instant"
+GROQ_MODEL_LARGE    = "llama-3.3-70b-versatile"   # modèle large pour l'arbre causal
 
 PRIOR_ALPHA = 1.0
 PRIOR_BETA  = 30.0
@@ -147,13 +148,24 @@ def _normalize_failure_mode(cause: str) -> str:
     return cleaned[:60].strip() if cleaned else cause[:60].strip()
 
 
-async def _groq_json(system: str, user: str, max_tokens: int = 1400) -> dict:
+def _repair_json(raw: str) -> str:
+    """Tente de réparer un JSON tronqué en fermant les accolades/crochets ouverts."""
+    open_braces   = raw.count('{') - raw.count('}')
+    open_brackets = raw.count('[') - raw.count(']')
+    # Ferme la dernière valeur string incomplète si besoin
+    if raw.rstrip().endswith(','):
+        raw = raw.rstrip()[:-1]
+    raw += ']' * max(open_brackets, 0)
+    raw += '}' * max(open_braces, 0)
+    return raw
+
+async def _groq_json(system: str, user: str, max_tokens: int = 1400, model: str = None) -> dict:
     import asyncio, logging
     if not GROQ_API_KEY:
         raise HTTPException(503, "Service IA non configuré (GROQ_API_KEY manquant)")
 
     payload = {
-        "model": GROQ_MODEL,
+        "model": model or GROQ_MODEL,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
@@ -192,15 +204,21 @@ async def _groq_json(system: str, user: str, max_tokens: int = 1400) -> dict:
         raw    = (choice.get("message") or {}).get("content", "").strip()
 
         if finish == "length":
-            logging.warning(f"[GROQ] JSON potentiellement tronqué (finish=length, max_tokens={max_tokens})")
+            logging.warning(f"[GROQ] JSON tronqué (finish=length, max_tokens={max_tokens}) — tentative réparation")
 
-        match = re.search(r'\{[\s\S]*\}', raw)
+        match = re.search(r'\{[\s\S]*', raw)
         if not match:
             raise HTTPException(502, f"Réponse IA invalide (finish={finish})")
+        raw_json = match.group()
         try:
-            return json.loads(match.group())
-        except json.JSONDecodeError as e:
-            raise HTTPException(502, f"JSON IA malformé (finish={finish}) : {str(e)[:100]}")
+            return json.loads(raw_json)
+        except json.JSONDecodeError:
+            # Tentative de réparation si tronqué
+            try:
+                repaired = _repair_json(raw_json)
+                return json.loads(repaired)
+            except json.JSONDecodeError as e:
+                raise HTTPException(502, f"JSON IA malformé (finish={finish}) : {str(e)[:100]}")
 
 
 # ─── Réseau neuronal MLP ─────────────────────────────────────────────────────
@@ -840,79 +858,53 @@ Tu réponds UNIQUEMENT en JSON valide, sans markdown, sans texte avant ou après
 Données terrain TUM — historique pannes réelles (12 mois) :
 {causes_txt}
 
-MISSION : Construis un arbre causal industriel dynamique et asymétrique pour cet équipement.
+MISSION : Construis un arbre causal UNIQUE et SPÉCIFIQUE à cet équipement et à ces données TUM.
+L'arbre doit refléter EXACTEMENT la réalité terrain de {body.equip_id} — pas un arbre générique.
 
-RÈGLES IMPÉRATIVES :
-- Structure récursive totalement libre : chaque nœud a 0 à N enfants
-- Profondeur variable par branche : suit la chaîne causale réelle jusqu'à la cause racine
-- Les causes TUM les plus fréquentes/lourdes (poids élevé) → branches plus développées (plus de niveaux)
-- Les causes rares ou simples → branches courtes (1-2 niveaux)
-- Arbre asymétrique : chaque branche a sa propre profondeur et largeur
-- Aucun nombre fixe de niveaux ni de causes — uniquement dicté par la causalité réelle
-- Causes racines = nœuds sans enfants (où le "pourquoi" n'a plus de réponse technique terrain)
+RÈGLES STRUCTURE — VRAI ARBRE INDUSTRIEL (STRICTES) :
+
+LARGEUR (branches multiples — OBLIGATOIRE) :
+- Chaque nœud intermédiaire doit avoir MINIMUM 2 enfants, idéalement 2 à 4
+- INTERDIT d'avoir un seul enfant par nœud (chaîne linéaire interdite)
+- Chaque enfant explore une dimension causale DIFFÉRENTE du parent :
+  ex. C1 "défaillance pompe" → C1.1 "usure mécanique" + C1.2 "problème électrique" + C1.3 "mauvaise lubrification"
+
+PROFONDEUR (minimum 5 niveaux — OBLIGATOIRE) :
+- Les ID des nœuds feuilles (enfants=[]) doivent contenir AU MINIMUM 4 points : ex. C1.1.1.1.1 (= Pourquoi 5), C1.2.1.2.1 (= Pourquoi 5)
+- Interdit d'avoir des feuilles avec 3 points ou moins (C1.1.1.1 = Pourquoi 4 = INSUFFISANT)
+- Profondeur variable : certaines branches peuvent aller à C1.1.1.1.1.1 (Pourquoi 6) ou C1.1.1.1.1.1.1 (Pourquoi 7)
+- Méthode des 5 pourquoi stricte : chaque enfant répond à "pourquoi le parent se produit-il ?" en descendant jusqu'à la cause physique/organisationnelle profonde
+
+RÉSULTAT ATTENDU : un arbre LARGE et PROFOND comme un vrai arbre industriel, pas une chaîne linéaire
+- L'arbre DOIT être visuellement différent à chaque équipement selon ses pannes spécifiques
 
 RÈGLE ANTI-REDONDANCE (ABSOLUMENT OBLIGATOIRE) :
-- Chaque libellé de cause doit être UNIQUE dans tout l'arbre — aucun texte de nœud ne peut apparaître deux fois, même partiellement similaire
-- Avant de finaliser, vérifie mentalement que chaque valeur "cause" est différente de toutes les autres dans l'arbre entier
-- Si une même cause technique pourrait expliquer plusieurs branches, ne la place que dans la branche la plus pertinente et reformule différemment pour les autres
-- Chaque branche doit explorer une DIMENSION DIFFÉRENTE : mécanique / électrique / process / maintenance / humain / environnement / conception
-- Interdit : copier-coller le même texte ou quasi-même texte dans deux nœuds distincts
+- Chaque texte de nœud UNIQUE dans tout l'arbre — interdit de répéter même partiellement
+- Chaque branche explore une dimension différente : mécanique / électrique / process / maintenance / humain / conception
+- Si une cause pourrait aller dans 2 branches → 1 seule branche, reformuler l'autre différemment
 
-FORMAT JSON récursif (profondeur libre) :
+FORMAT JSON (structure libre, pas de modèle imposé) :
 {{
   "arbre": [
     {{
       "id": "C1",
-      "cause": "cause terrain issue des données TUM",
-      "poids": 0.85,
-      "enfants": [
-        {{
-          "id": "C1.1",
-          "cause": "pourquoi C1 se produit (dimension technique)",
-          "enfants": [
-            {{
-              "id": "C1.1.1",
-              "cause": "cause racine profonde",
-              "enfants": []
-            }},
-            {{
-              "id": "C1.1.2",
-              "cause": "autre facteur contributeur",
-              "enfants": []
-            }}
-          ]
-        }},
-        {{
-          "id": "C1.2",
-          "cause": "autre raison directe de C1",
-          "enfants": []
-        }}
-      ]
-    }},
-    {{
-      "id": "C2",
-      "cause": "deuxième cause terrain",
-      "poids": 0.60,
-      "enfants": [
-        {{
-          "id": "C2.1",
-          "cause": "explication directe courte",
-          "enfants": []
-        }}
-      ]
+      "cause": "[cause réelle extraite des données TUM]",
+      "poids": [poids_réel],
+      "enfants": [ ... nœuds récursifs selon profondeur dictée par le poids ... ]
     }}
+    ... autant de branches que de causes distinctes dans les données ...
   ],
   "debat": [
-    {{"agent": "Agent Fréquence",  "argument": "...", "vote": "cause exacte"}},
-    {{"agent": "Agent Impact",     "argument": "...", "vote": "cause exacte"}},
-    {{"agent": "Agent Historique", "argument": "...", "vote": "cause exacte"}}
+    {{"agent": "Agent Fréquence",  "argument": "...", "vote": "..."}},
+    {{"agent": "Agent Impact",     "argument": "...", "vote": "..."}},
+    {{"agent": "Agent Historique", "argument": "...", "vote": "..."}}
   ],
-  "causes_racines": ["nœuds feuilles sans enfants = vraies causes racines identifiées"]
+  "causes_racines": ["liste des nœuds feuilles (sans enfants) = vraies causes racines"]
 }}
 
-Adapte la profondeur et la largeur à la réalité de CET équipement selon ses données TUM."""
+IMPORTANT : L'arbre généré pour {body.equip_id} doit être structurellement différent d'un arbre généré pour un autre équipement. Utilise UNIQUEMENT les causes présentes dans les données TUM fournies."""
 
-    return await _groq_json(system, user_prompt, max_tokens=4000)
+    return await _groq_json(system, user_prompt, max_tokens=8000, model=GROQ_MODEL_LARGE)
 
 
 # ─── POST /api/ia/priorisation ────────────────────────────────────────────────

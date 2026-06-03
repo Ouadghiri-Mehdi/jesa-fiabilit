@@ -36,7 +36,16 @@ export default function HistogramChart({ arrets, dateDebut, dateFin, seuils }) {
         border: `1px solid ${C.border}`,
         borderRadius: 12,
       }}>
-        <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.5 }}>📊</div>
+        <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.5 }}>
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 19h16" />
+            <path d="M6 15h4" />
+            <path d="M14 11h4" />
+            <path d="M4 7h16" />
+            <path d="M8 5v14" />
+            <path d="M16 5v14" />
+          </svg>
+        </div>
         <div style={{ fontSize: 14, fontWeight: 600, color: C.text3 }}>Aucune donnée sur cette période</div>
       </div>
     )

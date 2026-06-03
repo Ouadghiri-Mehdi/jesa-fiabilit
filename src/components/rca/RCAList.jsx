@@ -8,9 +8,9 @@ import { api } from '../../lib/api'
 import { useAuth } from '../../auth/AuthContext'
 
 const STATUT_CFG = {
-  'non-commencee': { label: 'Non commencée', bg: '#fef2f2', color: '#dc2626', border: '#fecaca', dot: '#dc2626' },
-  'en-cours':      { label: 'En cours',      bg: '#fffbeb', color: '#d97706', border: '#fde68a', dot: '#d97706' },
-  'cloturee':      { label: 'Clôturée',      bg: '#ecfdf5', color: '#059669', border: '#a7f3d0', dot: '#059669' },
+  'non-commencee': { label: 'Pas commencé', bg: C.redBg,    color: C.red,    border: C.redB,    dot: C.red },
+  'en-cours':      { label: 'En cours',      bg: C.orangeBg, color: C.orange, border: C.orangeB, dot: C.orange },
+  'cloturee':      { label: 'Clôturée',      bg: C.greenBg,  color: C.green,  border: C.greenB,  dot: C.green },
 }
 
 const METHODE_CFG = {
@@ -87,6 +87,10 @@ export function ChoixParticipantsPopup({ session, onChoisir, onClose, currentUse
 
   const [selectedParticipants, setSelectedParticipants] = useState(() => selfPart ? [selfPart] : [])
   const [participants, setParticipants] = useState([])
+  const [showManual, setShowManual] = useState(false)
+  const [manualNom, setManualNom] = useState('')
+  const [manualFonction, setManualFonction] = useState('')
+
   useEffect(() => {
     api.getParticipants()
       .then(list => setParticipants(list.map(p => ({ id: String(p.id), nom: p.nom, fonction: p.fonction || '' }))))
@@ -99,6 +103,15 @@ export function ChoixParticipantsPopup({ session, onChoisir, onClose, currentUse
         ? prev.filter(p => p.id !== participant.id)
         : [...prev, participant]
     )
+  }
+
+  const handleAddManual = () => {
+    const nom = manualNom.trim()
+    if (!nom) return
+    const p = { id: `manual-${Date.now()}`, nom, fonction: manualFonction.trim() }
+    setParticipants(prev => [...prev, p])
+    setSelectedParticipants(prev => [...prev, p])
+    setManualNom(''); setManualFonction(''); setShowManual(false)
   }
 
   return (
@@ -170,6 +183,45 @@ export function ChoixParticipantsPopup({ session, onChoisir, onClose, currentUse
               )
             })}
           </div>
+          {/* Bouton + formulaire ajout manuel */}
+          {!showManual ? (
+            <button onClick={() => setShowManual(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: `1.5px solid ${C.border2}`, background: '#f8faff', color: C.navy, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", marginBottom: 16 }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> Saisir un participant manuellement
+            </button>
+          ) : (
+            <div style={{ background: '#f8faff', border: `1.5px solid ${C.border2}`, borderRadius: 10, padding: '12px 14px', marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ flex: '1 1 150px' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.text3, marginBottom: 4 }}>Nom *</div>
+                <input autoFocus value={manualNom} onChange={e => setManualNom(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddManual(); if (e.key === 'Escape') setShowManual(false) }}
+                  placeholder="Ex: Ahmed Benali"
+                  style={{ width: '100%', padding: '7px 10px', fontSize: 12.5, borderRadius: 7, border: `1.5px solid ${C.border2}`, outline: 'none', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }}
+                  onFocus={e => e.target.style.borderColor = C.navy}
+                  onBlur={e => e.target.style.borderColor = C.border2} />
+              </div>
+              <div style={{ flex: '1 1 130px' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.text3, marginBottom: 4 }}>Fonction</div>
+                <input value={manualFonction} onChange={e => setManualFonction(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddManual(); if (e.key === 'Escape') setShowManual(false) }}
+                  placeholder="Ex: Technicien"
+                  style={{ width: '100%', padding: '7px 10px', fontSize: 12.5, borderRadius: 7, border: `1.5px solid ${C.border2}`, outline: 'none', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }}
+                  onFocus={e => e.target.style.borderColor = C.navy}
+                  onBlur={e => e.target.style.borderColor = C.border2} />
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={handleAddManual} disabled={!manualNom.trim()}
+                  style={{ padding: '7px 14px', borderRadius: 8, border: 'none', fontSize: 12.5, fontWeight: 700, cursor: manualNom.trim() ? 'pointer' : 'default', background: manualNom.trim() ? C.navy : '#e2e8f0', color: manualNom.trim() ? '#fff' : '#94a3b8', fontFamily: "'DM Sans',sans-serif" }}>
+                  Ajouter
+                </button>
+                <button onClick={() => { setShowManual(false); setManualNom(''); setManualFonction('') }}
+                  style={{ padding: '7px 12px', borderRadius: 8, border: `1.5px solid ${C.border2}`, background: '#fff', fontSize: 12.5, fontWeight: 600, color: C.text3, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <button onClick={onClose} style={{ padding: '8px 20px', borderRadius: 25, border: `1.5px solid ${C.border2}`, background: '#fff', fontSize: 12.5, fontWeight: 600, color: C.text3, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
               Annuler
@@ -396,6 +448,7 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
   const activeFiltersCount = [filters.dateFrom, filters.dateTo, filters.equipement, filters.causeArret].filter(Boolean).length
   const enCours = sessions.filter(s => s.statut === 'en-cours').length
   const nonComm = sessions.filter(s => s.statut === 'non-commencee').length
+  const cloturees = sessions.filter(s => s.statut === 'cloturee').length
 
   const handleOuvrir = (s) => {
     const now = new Date().toISOString()
@@ -449,12 +502,20 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
 
   if (!sessions.length) return (
     <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: 48, textAlign: 'center', color: '#94a3b8' }}>
-      <div style={{ fontSize: 36, marginBottom: 12 }}>🔬</div>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 6H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z" />
+          <path d="M8 10h8" />
+          <path d="M8 14h4" />
+          <path d="M8 6v4" />
+          <path d="M16 6v4" />
+        </svg>
+      </div>
       <div style={{ fontSize: 15, fontWeight: 600 }}>Aucune session RCA</div>
     </div>
   )
 
-  const GRID_COLS = '108px 190px 58px 1fr 118px 100px 100px 62px 122px 80px'
+  const GRID_COLS = '108px minmax(220px, 1fr) 90px 2.2fr 118px 100px 100px 62px 122px 80px'
 
   return (
     <>
@@ -475,7 +536,7 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
         />
       )}
 
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(15,30,53,.07)', marginBottom: 20 }}>
+      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, overflow: 'hidden', boxShadow: '0 2px 12px rgba(15,30,53,.07)', marginBottom: 20, overflowX: 'auto' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -484,8 +545,9 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
             {activeFiltersCount > 0 && <span style={{ fontSize: 11, fontWeight: 700, background: C.navy, color: '#fff', borderRadius: 20, padding: '2px 8px' }}>{filtered.length}/{sessions.length}</span>}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {enCours > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: '#eef2f7', color: '#334155', border: '1.5px solid #d1dbe8' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#334155', display: 'inline-block' }} />{enCours} en cours</span>}
-            {nonComm > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: '#fef2f2', color: '#dc2626', border: '1.5px solid #fecaca' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#dc2626', display: 'inline-block' }} />{nonComm} non commencée{nonComm > 1 ? 's' : ''}</span>}
+            {enCours > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: C.orangeBg, color: C.orange, border: `1.5px solid ${C.orangeB}` }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: C.orange, display: 'inline-block' }} />{enCours} en cours</span>}
+            {nonComm > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: C.redBg, color: C.red, border: `1.5px solid ${C.redB}` }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: C.red, display: 'inline-block' }} />{nonComm} non commencée{nonComm > 1 ? 's' : ''}</span>}
+            {cloturees > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 11px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: C.greenBg, color: C.green, border: `1.5px solid ${C.greenB}` }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: C.green, display: 'inline-block' }} />{cloturees} clôturée{cloturees > 1 ? 's' : ''}</span>}
           </div>
         </div>
 
@@ -520,9 +582,10 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
                 display: 'grid',
                 gridTemplateColumns: GRID_COLS,
                 gap: '0 8px',
-                padding: '7px 16px',
+                padding: '10px 16px',
                 borderBottom: isLast ? 'none' : '1px solid #e9eef5',
-                alignItems: 'center',
+                alignItems: 'start',
+                minHeight: 'auto',
                 transition: 'background .12s',
                 borderLeft: `3px solid ${sc.dot}`,
                 background: isEven ? '#fff' : '#f8fafd',
@@ -536,8 +599,15 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
               </div>
 
               {/* POSTE TECHNIQUE */}
-              <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 10.5, color: '#1a3a6b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.equipId || '—'}>
-                {s.equipId || '—'}
+              <div style={{ overflow: 'hidden', minWidth: 0 }} title={s.posteTechnique || s.equipId || '—'}>
+                <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 10.5, color: '#1a3a6b', lineHeight: 1.3, wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                  {s.posteTechnique || s.equipId || '—'}
+                </div>
+                {s.designation && (
+                  <div style={{ fontSize: 10, color: '#64748b', lineHeight: 1.2, wordBreak: 'break-word', marginTop: 2 }}>
+                    {s.designation}
+                  </div>
+                )}
               </div>
 
               {/* ZONE */}
@@ -546,12 +616,12 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
               </div>
 
               {/* CAUSE D'ARRÊT */}
-              <div style={{ paddingRight: 8, overflow: 'hidden' }}>
-                <div style={{ fontSize: 12, color: isClosed ? '#94a3b8' : '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={causeText}>
+              <div style={{ paddingRight: 8, minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: isClosed ? '#94a3b8' : '#475569', lineHeight: 1.4, wordBreak: 'break-word', whiteSpace: 'normal' }}>
                   {causeText}
                 </div>
                 {s.phenomene && s.causeArret && s.causeArret !== s.phenomene && (
-                  <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 1, fontStyle: 'italic', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={s.phenomene}>{s.phenomene}</div>
+                  <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 3, fontStyle: 'italic', lineHeight: 1.3, wordBreak: 'break-word', whiteSpace: 'normal' }}>{s.phenomene}</div>
                 )}
               </div>
 
@@ -566,8 +636,8 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
                   const dt = formatDateTime(s.dateHeureDebut)
                   return dt ? (
                     <div>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b' }}>{dt.date}</div>
-                      <div style={{ fontSize: 10, color: '#94a3b8' }}>{dt.time}</div>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: C.navy }}>{dt.date}</div>
+                          <div style={{ fontSize: 10, color: C.navy }}>{dt.time}</div>
                     </div>
                   ) : <span style={{ fontSize: 11, color: '#cbd5e1' }}>—</span>
                 })()}
@@ -579,15 +649,15 @@ export default function RCAList({ sessions, onSelect, onUpdateSession }) {
                   const dt = formatDateTime(s.dateHeureFin)
                   return dt ? (
                     <div>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#64748b' }}>{dt.date}</div>
-                      <div style={{ fontSize: 10, color: '#94a3b8' }}>{dt.time}</div>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: C.navy }}>{dt.date}</div>
+                      <div style={{ fontSize: 10, color: C.navy }}>{dt.time}</div>
                     </div>
                   ) : <span style={{ fontSize: 11, color: '#cbd5e1' }}>—</span>
                 })()}
               </div>
 
               {/* DURÉE */}
-              <div style={{ fontSize: 11, fontWeight: 600, color: s.tempsAnalyse ? '#64748b' : '#cbd5e1', fontFamily: "'Sora',sans-serif", whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: s.tempsAnalyse ? C.navy : '#cbd5e1', fontFamily: "'Sora',sans-serif", whiteSpace: 'nowrap' }}>
                 {formatDuree(s.tempsAnalyse)}
               </div>
 

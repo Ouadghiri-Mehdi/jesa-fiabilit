@@ -16,7 +16,7 @@ export default function TUMPage() {
   const location = useLocation()
   const { notifs, showNotif, dismissNotif } = useNotifs()
   const {
-    arrets, seuils, alertEquips,
+    arrets, arretsCycle, seuils, alertEquips,
     equipmentList, knownEquipIds, causesList, updateEquipmentList, updateCausesList,
     ajouterArrets, sauvegarderSeuils,
   } = useTUM()
@@ -197,7 +197,7 @@ export default function TUMPage() {
       {activeView === 'analysis' && (
         <div style={{ animation: 'fadeUp .2s ease' }}>
           <BadActors
-            arrets={arrets}
+            arrets={arretsCycle}
             seuils={seuils}
             onLancerRCA={handleLancerRCA}
             viewMode={badActorsViewMode}

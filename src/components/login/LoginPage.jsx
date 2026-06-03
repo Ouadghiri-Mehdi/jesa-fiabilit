@@ -41,25 +41,12 @@ export default function LoginPage() {
         padding: '48px 40px 40px',
       }}>
         {/* Logo / brand */}
-        <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 60, height: 60, borderRadius: 14,
-            background: 'linear-gradient(135deg, #0f1f3d, #1a3a6b)',
-            marginBottom: 16,
-          }}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
-          </div>
-          <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 20, color: '#0f1f3d', letterSpacing: '-0.3px' }}>
-            JESA Reliability Hub
-          </div>
-          <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 4 }}>
-            Plateforme de fiabilité industrielle
-          </div>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <img
+            src="/jesa-logo.png"
+            alt="JESA Reliability Hub"
+            style={{ width: 140, height: 'auto', objectFit: 'contain', marginBottom: 8 }}
+          />
         </div>
 
         <form onSubmit={handleSubmit}>

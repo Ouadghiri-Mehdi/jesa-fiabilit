@@ -505,12 +505,24 @@ export default function HistoriquePage() {
 
       {/* Barre de recherche */}
       <div style={{ background: '#fff', border: '1.5px solid #cbd5e1', borderRadius: 12, padding: '20px 24px', marginBottom: 20, boxShadow: '0 4px 12px rgba(15,30,53,.10)' }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: '1.2px', textTransform: 'uppercase', marginBottom: 12 }}>
-          🔍 Rechercher un poste technique
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: '1.2px', textTransform: 'uppercase', marginBottom: 12 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 5a2 2 0 0 1 2-2h10l6 6v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5z"/>
+            <path d="M8 9h4"/>
+            <path d="M8 13h4"/>
+            <path d="M10 17h2"/>
+            <circle cx="17" cy="17" r="3"/>
+            <line x1="19.5" y1="19.5" x2="22" y2="22"/>
+          </svg>
+          Rechercher un poste technique
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 220, background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 8, padding: '9px 14px' }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="10" cy="10" r="6"/>
+              <line x1="14.5" y1="14.5" x2="20" y2="20"/>
+              <path d="M6 10h4"/>
+            </svg>
             <input value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Poste technique ou désignation…"
               style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 13, color: '#0f172a', width: '100%', fontFamily: "'DM Sans',sans-serif" }} />
@@ -527,7 +539,15 @@ export default function HistoriquePage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {filtered.length === 0 ? (
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>🔍</div>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="14" height="14" rx="2"/>
+                <line x1="3" y1="9" x2="17" y2="9"/>
+                <line x1="9" y1="15" x2="15" y2="15"/>
+                <circle cx="16.5" cy="16.5" r="3"/>
+                <line x1="18.5" y1="18.5" x2="22" y2="22"/>
+              </svg>
+            </div>
             <div style={{ fontSize: 15, fontWeight: 600 }}>Aucun poste technique trouvé</div>
           </div>
         ) : filtered.map(p => (

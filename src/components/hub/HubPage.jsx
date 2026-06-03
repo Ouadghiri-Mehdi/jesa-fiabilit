@@ -1,37 +1,35 @@
 // src/components/hub/HubPage.jsx
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth, getNewClosedRCAsCount, markNotifSeen } from '../../auth/AuthContext'
+import { useAuth, getNewClosedRCAsCount, initializeClosedRcaSeen, markNotifSeen } from '../../auth/AuthContext'
 
 function WorkspaceCard({ title, subtitle, icon, onClick, badge, filled, bg }) {
+  const [hovered, setHovered] = useState(false)
   const isFilledStyle = filled
+  const boxShadow = hovered
+    ? (isFilledStyle ? '0 16px 48px rgba(11,46,99,0.32)' : '0 12px 36px rgba(0,0,0,0.10)')
+    : (isFilledStyle ? '0 8px 32px rgba(11,46,99,0.22)' : '0 4px 20px rgba(0,0,0,0.06)')
+
   return (
     <div
       onClick={onClick}
       style={{
         position: 'relative',
-        width: 280, padding: '36px 32px 32px',
+        width: 280, padding: '32px 28px 28px',
         borderRadius: 16,
         background: isFilledStyle ? '#0b2e63' : (bg || '#fff'),
         color: isFilledStyle ? '#fff' : '#1e293b',
         border: 'none',
+        boxSizing: 'border-box',
         cursor: 'pointer',
-        boxShadow: isFilledStyle ? '0 8px 32px rgba(11,46,99,0.22)' : '0 4px 20px rgba(0,0,0,0.06)',
+        boxShadow,
+        transform: hovered ? 'translateY(-3px)' : 'translateY(0)',
         transition: 'transform .18s, box-shadow .18s',
         userSelect: 'none',
         textAlign: 'center',
       }}
-      onMouseEnter={e => {
-        e.currentTarget.style.transform = 'translateY(-4px)'
-        e.currentTarget.style.boxShadow = isFilledStyle
-          ? '0 16px 48px rgba(11,46,99,0.32)'
-          : '0 12px 36px rgba(0,0,0,0.10)'
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.transform = 'translateY(0)'
-        e.currentTarget.style.boxShadow = isFilledStyle
-          ? '0 8px 32px rgba(11,46,99,0.22)'
-          : '0 4px 20px rgba(0,0,0,0.06)'
-      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {badge > 0 && (
         <div style={{
@@ -66,14 +64,37 @@ function WorkspaceCard({ title, subtitle, icon, onClick, badge, filled, bg }) {
 export default function HubPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const notifCount = user ? getNewClosedRCAsCount(user.siteKey) : 0
+  const [notifCount, setNotifCount] = useState(user ? getNewClosedRCAsCount(user.siteKey, user.id) : 0)
+
+  useEffect(() => {
+    if (!user) {
+      setNotifCount(0)
+      return
+    }
+
+    initializeClosedRcaSeen(user.id)
+
+    const refresh = () => {
+      setNotifCount(getNewClosedRCAsCount(user.siteKey, user.id))
+    }
+
+    refresh()
+    window.addEventListener('jesaClosedRcaNotification', refresh)
+    window.addEventListener('storage', refresh)
+    const interval = window.setInterval(refresh, 10000)
+    return () => {
+      window.removeEventListener('jesaClosedRcaNotification', refresh)
+      window.removeEventListener('storage', refresh)
+      window.clearInterval(interval)
+    }
+  }, [user?.siteKey, user?.id])
 
   function goToSite() {
     navigate('/tum', { replace: true })
   }
 
   function goToGlobal() {
-    if (user) markNotifSeen(user.siteKey)
+    if (user) markNotifSeen(user.siteKey, user.id)
     navigate('/global', { replace: true })
   }
 
@@ -178,37 +199,23 @@ export default function HubPage() {
             }
           />
 
-          <WorkspaceCard
-            title="Tracking Global"
-            subtitle="Consulter les RCA clôturées de tous les sites en lecture seule"
-            bg="#e2e8f0"
-            onClick={goToGlobal}
-            badge={notifCount}
-            icon={
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="2" y1="12" x2="22" y2="12"/>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-              </svg>
-            }
-          />
-        </div>
-
-        {notifCount > 0 && (
-          <div style={{
-            marginTop: 24, background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: 10, padding: '12px 20px',
-            color: '#dc2626', fontSize: 13,
-            display: 'flex', alignItems: 'center', gap: 10,
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-            {notifCount} nouvelle{notifCount > 1 ? 's' : ''} RCA clôturée{notifCount > 1 ? 's' : ''} sur les autres sites
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: 280 }}>
+            <WorkspaceCard
+              title={notifCount > 0 ? 'Nouvelle RCA' : 'Tracking Global'}
+              subtitle="Consulter les RCA clôturées de tous les sites en lecture seule"
+              bg="#e2e8f0"
+              onClick={goToGlobal}
+              badge={notifCount}
+              icon={
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="2" y1="12" x2="22" y2="12"/>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                </svg>
+              }
+            />
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

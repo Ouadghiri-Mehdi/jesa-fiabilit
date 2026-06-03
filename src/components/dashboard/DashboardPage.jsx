@@ -495,6 +495,123 @@ function LeadingCard({ abbrev, label, value, unit, sub, color, accent }) {
   )
 }
 
+function IconInline({ children }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, marginRight: 6, flexShrink: 0 }}>{children}</span>
+  )
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4v6h6" />
+      <path d="M20 20v-6h-6" />
+      <path d="M5 19a9 9 0 1 0 0-14" />
+      <path d="M19 5a9 9 0 1 1 0 14" />
+    </svg>
+  )
+}
+
+function AlertIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.29 3.86l-7 12A2 2 0 0 0 5 19h14a2 2 0 0 0 1.71-3.14l-7-12a2 2 0 0 0-3.42 0z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </svg>
+  )
+}
+
+function RCAIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a3a6b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16" />
+      <path d="M4 12h10" />
+      <path d="M4 17h7" />
+      <path d="M18 13v6" />
+      <path d="M15 16l3 3 3-3" />
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6L9 17l-5-5" />
+    </svg>
+  )
+}
+
+function IdeaIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9.5 9a3.5 3.5 0 1 1 5 0c0 2-1.5 2.75-1.5 2.75a1 1 0 0 0-.5.5L12 14" />
+      <path d="M12 3v1" />
+      <path d="M16 5l-.7.7" />
+      <path d="M8 5l.7.7" />
+      <path d="M9 18h6" />
+      <path d="M10 22h4" />
+    </svg>
+  )
+}
+
+function ParetoIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a3a6b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 17h4" />
+      <path d="M3 12h7" />
+      <path d="M3 7h14" />
+      <path d="M10 17V7l7 7 4-4" />
+    </svg>
+  )
+}
+
+function TrendIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0891b2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="4 17 10 11 13 14 20 7" />
+      <polyline points="20 14 20 7 13 7" />
+    </svg>
+  )
+}
+
+function DonutIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a10 10 0 1 0 10 10h-4" />
+      <path d="M12 2v6" />
+    </svg>
+  )
+}
+
+function WarningIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.29 3.86l-7 12A2 2 0 0 0 5 19h14a2 2 0 0 0 1.71-3.14l-7-12a2 2 0 0 0-3.42 0z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </svg>
+  )
+}
+
+function UserIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  )
+}
+
+function GearIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09A1.65 1.65 0 0 0 9 4.6V4a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  )
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [periode, setPeriode] = useState('mois')
@@ -683,7 +800,7 @@ export default function DashboardPage() {
             background: '#fff', cursor: 'pointer', fontSize: 12, color: C.text3,
             fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 5,
           }}>
-            🔄 Rafraîchir
+            <RefreshIcon /> Rafraîchir
           </button>
           <div style={{ display: 'flex', gap: 5, background: C.bg2, borderRadius: 25, padding: 4 }}>
             {['Semaine', 'Mois', 'Trimestre'].map(p => (
@@ -704,7 +821,7 @@ export default function DashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 24 }}>
 
         <LaggingCard
-          icon="🚨"
+          icon={<AlertIcon />}
           label="Équipements ayant atteint le seuil RCA"
           value={kpi.equipN2 + kpi.equipN1}
           sublabel={`${kpi.equipN2} en alerte N2 · ${kpi.equipN1} en surveillance N1`}
@@ -713,7 +830,7 @@ export default function DashboardPage() {
         />
 
         <LaggingCard
-          icon="🔬"
+          icon={<RCAIcon />}
           label="RCA déclenchées"
           value={kpi.rcaTotal}
           sublabel={`${kpi.rcaOuvertes} ouvertes · ${kpi.rcaCloturees} clôturées`}
@@ -724,7 +841,7 @@ export default function DashboardPage() {
         />
 
         <LaggingCard
-          icon="✅"
+          icon={<CheckIcon />}
           label="Analyses clôturées"
           value={kpi.rcaCloturees}
           value2={kpi.rcaTotal}
@@ -736,7 +853,7 @@ export default function DashboardPage() {
         />
 
         <LaggingCard
-          icon="💡"
+          icon={<IdeaIcon />}
           label="Recommandations générées"
           value={kpi.recommandations}
           sublabel={`Issues de ${kpi.rcaCloturees} analyse${kpi.rcaCloturees !== 1 ? 's' : ''} clôturée${kpi.rcaCloturees !== 1 ? 's' : ''}`}
@@ -770,7 +887,7 @@ export default function DashboardPage() {
             <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${C.border}`, padding: '18px 16px 14px', boxShadow: '0 1px 8px rgba(15,30,53,.06)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <span style={{ width: 3, height: 17, background: C.navy, borderRadius: 2, display: 'inline-block', flexShrink: 0 }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: C.text2, fontFamily: "'Sora',sans-serif" }}>📊 Pareto Bad Actors — Cumul durée</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.text2, fontFamily: "'Sora',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 8 }}><IconInline><ParetoIcon /></IconInline>Pareto Bad Actors — Cumul durée</span>
               </div>
               <div style={{ fontSize: 10.5, color: C.text4, marginBottom: 10 }}>{badCnt} équipements représentent <strong style={{ color: '#dc2626' }}>{pctCapture}%</strong> du temps d'arrêt total</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 10 }}>
@@ -822,7 +939,7 @@ export default function DashboardPage() {
             <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${C.border}`, padding: '18px 16px 14px', boxShadow: '0 1px 8px rgba(15,30,53,.06)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <span style={{ width: 3, height: 17, background: C.navy, borderRadius: 2, display: 'inline-block', flexShrink: 0 }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: C.text2, fontFamily: "'Sora',sans-serif" }}>📊 Pareto Fréquence arrêts</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.text2, fontFamily: "'Sora',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 8 }}><IconInline><ParetoIcon /></IconInline>Pareto Fréquence arrêts</span>
               </div>
               <div style={{ fontSize: 10.5, color: C.text4, marginBottom: 10 }}>{badFreqCnt} équipements représentent <strong style={{ color: '#dc2626' }}>{pctCaptureFreq}%</strong> du nombre total d'arrêts</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 10 }}>
@@ -874,7 +991,7 @@ export default function DashboardPage() {
       {/* ══ GRAPHIQUES LIGNE 2 (Évolution RCA + Famille + RCA en cours) ══════ */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.15fr', gap: 18, marginBottom: 18 }}>
 
-        <Card title="📈 Évolution analyses RCA — 6 mois">
+        <Card title={<><IconInline><TrendIcon /></IconInline>Évolution analyses RCA — 6 mois</>}>
           <ActionsChart data={kpi.actionsEvol} />
           <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11.5 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -893,25 +1010,25 @@ export default function DashboardPage() {
               border: `1px solid ${kpi.improving ? '#a7f3d0' : '#fed7aa'}`,
               color: kpi.improving ? '#059669' : '#d97706', fontWeight: 600,
             }}>
-              {kpi.improving ? '📉 Tendance positive' : '📈 Volume en hausse'} · Dernier mois : {kpi.lastMonth.cloturees} / {kpi.lastMonth.ouvertes} clôturée{kpi.lastMonth.cloturees !== 1 ? 's' : ''}
+              {kpi.improving ? <><IconInline><TrendIcon /></IconInline>Tendance positive</> : <><IconInline><TrendIcon /></IconInline>Volume en hausse</>} · Dernier mois : {kpi.lastMonth.cloturees} / {kpi.lastMonth.ouvertes} clôturée{kpi.lastMonth.cloturees !== 1 ? 's' : ''}
             </div>
           )}
         </Card>
 
-        <Card title="🔍 Répartition par famille d'équipements">
+        <Card title={<><IconInline><DonutIcon /></IconInline>Répartition par famille d'équipements</>}>
           <DonutChart data={kpi.famillesPannes} />
           {kpi.topFamille && (
             <div style={{ marginTop: 14, padding: '8px 12px', borderRadius: 8, fontSize: 11.5, background: '#fafbfd', border: `1px solid ${C.border}`, color: C.text3 }}>
-              ⚠️ <strong style={{ color: C.navy }}>{kpi.topFamille.label}</strong> représente{' '}
+              <span style={{ display: 'inline-flex', alignItems: 'center', marginRight: 6 }}><WarningIcon /></span><strong style={{ color: C.navy }}>{kpi.topFamille.label}</strong> représente{' '}
               <strong>{kpi.topFamille.val}%</strong> du temps d'arrêt — priorité d'action recommandée
             </div>
           )}
         </Card>
 
-        <Card title="🔬 RCA en cours" badge={`${kpi.rcaOuvertes} actives`}>
+        <Card title={<><IconInline><RCAIcon /></IconInline>RCA en cours</>} badge={`${kpi.rcaOuvertes} actives`}>
           {kpi.rcaEnCours.length === 0 ? (
             <div style={{ padding: '32px 0', textAlign: 'center', color: C.text4, fontSize: 12 }}>
-              {rawSessions.length === 0 ? 'Aucune session RCA — lancez une analyse depuis TUM' : '✅ Toutes les analyses sont clôturées'}
+              {rawSessions.length === 0 ? 'Aucune session RCA — lancez une analyse depuis TUM' : <><IconInline><CheckIcon /></IconInline>Toutes les analyses sont clôturées</>}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -925,7 +1042,10 @@ export default function DashboardPage() {
                       )}
                       <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: r.niveau === 2 ? '#fef2f2' : '#fffbeb', color: r.niveau === 2 ? '#dc2626' : '#d97706', fontWeight: 700 }}>N{r.niveau}</span>
                     </div>
-                    <div style={{ fontSize: 12.5, color: C.text2, fontWeight: 600, marginBottom: 8 }}>⚙️ {r.equip}{r.animateur !== '—' ? ` · 👤 ${r.animateur}` : ''}</div>
+                    <div style={{ fontSize: 12.5, color: C.text2, fontWeight: 600, marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><GearIcon />{r.equip}</span>
+                      {r.animateur !== '—' ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><UserIcon />{r.animateur}</span> : null}
+                    </div>
                     <div style={{ height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
                       <div style={{ height: '100%', width: `${r.avancement}%`, background: r.avancement >= 70 ? '#059669' : r.avancement >= 40 ? '#d97706' : C.navy, borderRadius: 3 }} />
                     </div>
@@ -938,7 +1058,7 @@ export default function DashboardPage() {
               ))}
               {kpi.rcaCloturees > 0 && (
                 <div style={{ padding: '10px 16px', borderRadius: 10, background: '#ecfdf5', border: '1px solid #a7f3d0', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 9, background: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>✅</div>
+                  <div style={{ width: 32, height: 32, borderRadius: 9, background: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><CheckIcon /></div>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 13, color: '#059669' }}>{kpi.rcaCloturees} analyse{kpi.rcaCloturees !== 1 ? 's' : ''} clôturée{kpi.rcaCloturees !== 1 ? 's' : ''}</div>
                     <div style={{ fontSize: 11.5, color: '#047857', marginTop: 1 }}>

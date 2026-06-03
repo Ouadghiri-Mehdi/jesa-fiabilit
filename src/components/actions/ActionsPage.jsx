@@ -4,12 +4,12 @@ import C from '../../tokens/colors'
 import { api } from '../../lib/api'
 
 const STATUT_CFG = {
-  'pas-commence': { label: 'Non commencé', bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
-  'en-cours':     { label: 'En cours',     bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
-  'cloture':      { label: 'Clôturé',      bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' },
-  'retard':       { label: 'En retard',    bg: '#fff7ed', color: '#ea580c', border: '#fed7aa' },
-  'ouverte':      { label: 'Non commencé', bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
-  'cloturee':     { label: 'Clôturé',      bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' },
+  'pas-commence': { label: 'Non commencé', bg: C.redBg,    color: C.red,    border: C.redB },
+  'en-cours':     { label: 'En cours',     bg: C.orangeBg, color: C.orange, border: C.orangeB },
+  'cloture':      { label: 'Clôturé',      bg: C.greenBg,  color: C.green,  border: C.greenB },
+  'retard':       { label: 'En retard',    bg: '#fff7ed',  color: '#ea580c', border: '#fed7aa' },
+  'ouverte':      { label: 'Non commencé', bg: C.redBg,    color: C.red,    border: C.redB },
+  'cloturee':     { label: 'Clôturé',      bg: C.greenBg,  color: C.green,  border: C.greenB },
 }
 
 
@@ -317,10 +317,6 @@ export default function ActionsPage() {
           <option value="retard">En retard</option>
           <option value="cloture">Clôturé</option>
         </select>
-        <button onClick={() => { setSearch(''); setFiltStatut(''); setFiltEquip('') }}
-          style={{ padding: '7px 14px', background: 'transparent', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', color: '#64748b', fontFamily: "'DM Sans',sans-serif" }}>
-          ↺ Réinitialiser
-        </button>
         {groups.length > 0 && (
           <button onClick={toggleAll}
             style={{ padding: '7px 14px', background: 'transparent', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', color: '#1a3a6b', fontFamily: "'DM Sans',sans-serif" }}>
@@ -332,7 +328,15 @@ export default function ActionsPage() {
       {/* Groupes par équipement */}
       {total === 0 ? (
         <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 48, textAlign: 'center', color: '#94a3b8' }}>
-          <div style={{ fontSize: 36, marginBottom: 14 }}>📋</div>
+          <div style={{ fontSize: 36, marginBottom: 14 }}>
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#334155" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+              <path d="M8 7h8" />
+              <path d="M8 11h8" />
+              <path d="M8 15h5" />
+              <path d="M16 3v4" />
+            </svg>
+          </div>
           <div style={{ fontSize: 15, fontWeight: 700, color: '#334155', marginBottom: 8 }}>Aucune action corrective</div>
           <div style={{ fontSize: 13 }}>Les actions seront affichées ici une fois générées depuis une analyse RCA.</div>
         </div>

@@ -5,10 +5,10 @@ import C from '../../tokens/colors'
 import { api } from '../../lib/api'
 
 const STATUT_ACTION = {
-  'pas-commence': { label: 'Non commencé', bg: '#fef2f2', color: '#dc2626', border: '#fecaca', dot: '#dc2626' },
-  'en-cours':     { label: 'En cours',     bg: '#fffbeb', color: '#d97706', border: '#fde68a', dot: '#d97706' },
-  'cloture':      { label: 'Clôturé',      bg: '#ecfdf5', color: '#059669', border: '#a7f3d0', dot: '#059669' },
-  'retard':       { label: 'En retard',    bg: '#fff7ed', color: '#ea580c', border: '#fed7aa', dot: '#ea580c' },
+  'pas-commence': { label: 'Non commencé', bg: C.redBg,    color: C.red,    border: C.redB,    dot: C.red },
+  'en-cours':     { label: 'En cours',     bg: C.orangeBg, color: C.orange, border: C.orangeB, dot: C.orange },
+  'cloture':      { label: 'Clôturé',      bg: C.greenBg,  color: C.green,  border: C.greenB,  dot: C.green },
+  'retard':       { label: 'En retard',    bg: '#fff7ed',  color: '#ea580c', border: '#fed7aa',  dot: '#ea580c' },
 }
 
 const AVATAR_COLORS = ['#1a3a6b','#059669','#d97706','#7c3aed','#0891b2','#dc2626','#0f766e','#b45309']
@@ -308,8 +308,10 @@ export default function ActionsTable({ actions, onChange, participants = [], onA
   const rcaDay = rcaStartDate ? rcaStartDate.slice(0, 10) : null
   const isDelaiDepasse = (row) => {
     if (row.statut === 'cloture' || !row.delai) return false
-    if (!rcaDay) return false
-    return row.delai !== rcaDay
+    // Compare the deadline date to today's local date (YYYY-MM-DD)
+    const d = new Date()
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    return row.delai < today
   }
   const counts = {
     total:      rows.length,
@@ -525,10 +527,11 @@ export default function ActionsTable({ actions, onChange, participants = [], onA
 
               <tbody>
                 {rows.map((row, idx) => {
-                  const sc       = STATUT_ACTION[row.statut] || STATUT_ACTION['pas-commence']
                   const avatarC  = AVATAR_COLORS[idx % AVATAR_COLORS.length]
                   const isLast   = idx === rows.length - 1
                   const isOverdue = isDelaiDepasse(row)
+                  let sc = STATUT_ACTION[row.statut] || STATUT_ACTION['pas-commence']
+                  if (isOverdue && row.statut !== 'cloture') sc = STATUT_ACTION['retard']
 
                   const cell = (extra = {}) => ({
                     padding: '12px 14px',

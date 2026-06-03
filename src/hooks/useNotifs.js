@@ -7,7 +7,7 @@ export default function useNotifs() {
   const showNotif = useCallback((title, body, type = 'blue') => {
     const id = Date.now() + Math.random()
     setNotifs(n => [...n, { id, title, body, type }])
-    setTimeout(() => setNotifs(n => n.filter(x => x.id !== id)), 5000)
+    setTimeout(() => setNotifs(n => n.filter(x => x.id !== id)), 10000)
   }, [])
 
   const dismissNotif = useCallback((id) => {

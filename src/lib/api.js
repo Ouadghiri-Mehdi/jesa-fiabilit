@@ -1,6 +1,6 @@
 // src/lib/api.js — Client HTTP centralisé pour le backend FastAPI (MySQL)
 
-const BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+export const BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
 // ─── Token JWT ───────────────────────────────────────────────────────────────
 

@@ -6,6 +6,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react'
 import C from '../../tokens/colors'
+import ProfessionalScatter from './ProfessionalScatter'
 import { getStatut } from '../../hooks/useTUM'
 import { api } from '../../lib/api'
 
@@ -17,6 +18,23 @@ const fmtDate = str => {
 }
 
 const trunc = (str, max = 15) => str.length > max ? str.slice(0, max) + '…' : str
+
+const getParetoSegment = (items, field, targetPct = 20) => {
+  const sorted = [...items].sort((a, b) => (b[field] || 0) - (a[field] || 0))
+  const total = sorted.reduce((sum, item) => sum + (item[field] || 0), 0)
+  const segment = []
+  let running = 0
+  for (const item of sorted) {
+    const share = total > 0 ? ((item[field] || 0) / total) * 100 : 0
+    if (segment.length === 0 || running < targetPct) {
+      segment.push(item)
+      running += share
+    } else {
+      break
+    }
+  }
+  return segment
+}
 
 // ─── Capture SVG en PNG HD (scale ×3) ────────────────────────────────────────
 async function captureCardAsImage(cardEl, filename = 'pareto.png') {
@@ -336,7 +354,7 @@ function CumulLineChart({ data, seuilN1, seuilN2, seuilLabel, title, unit, color
             <span style={{ width: 3, height: 17, background: C.navy, borderRadius: 2, display: 'inline-block', flexShrink: 0 }} />
             <span style={{ fontSize: 13, fontWeight: 700, color: C.text2, fontFamily: "'Sora',sans-serif" }}>{title}</span>
           </div>
-          <div style={{ fontSize: 10.5, color: C.text4, marginTop: 3, marginLeft: 11 }}>Équipements triés par ordre décroissant · Seuils N1/N2 selon le paramétrage TUM</div>
+          <div style={{ fontSize: 10.5, color: C.text4, marginTop: 3, marginLeft: 11 }}>Postes techniques triés par ordre décroissant · Seuils N1/N2 selon le paramétrage TUM</div>
         </div>
         <CopyButton cardRef={cardRef} filename={`${title.toLowerCase().replace(/\s+/g,'-')}.png`} />
       </div>
@@ -351,22 +369,22 @@ function CumulLineChart({ data, seuilN1, seuilN2, seuilLabel, title, unit, color
             <div style={{ padding: '8px 10px', borderRadius: 7, background: '#f1f5f9', border: `1px solid #e2e8f0`, textAlign: 'center' }}>
               <div style={{ fontSize: 8.5, fontWeight: 700, color: C.text4, textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 3 }}>Total</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: C.navy, fontFamily: "'Sora',sans-serif", lineHeight: 1 }}>{total}</div>
-              <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>équipement{total > 1 ? 's' : ''}</div>
+              <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>poste technique{total > 1 ? 's' : ''}</div>
             </div>
             <div style={{ padding: '8px 10px', borderRadius: 7, background: '#f1f5f9', border: `1px solid #e2e8f0`, textAlign: 'center' }}>
               <div style={{ fontSize: 8.5, fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 3 }}>● Alerte</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: '#AD1010', fontFamily: "'Sora',sans-serif", lineHeight: 1 }}>{nbAlerte}</div>
-              <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>équipement{nbAlerte > 1 ? 's' : ''}</div>
+              <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>poste technique{nbAlerte > 1 ? 's' : ''}</div>
             </div>
             <div style={{ padding: '8px 10px', borderRadius: 7, background: '#f1f5f9', border: `1px solid #e2e8f0`, textAlign: 'center' }}>
               <div style={{ fontSize: 8.5, fontWeight: 700, color: '#d97706', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 3 }}>● Surveillance</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: '#b45309', fontFamily: "'Sora',sans-serif", lineHeight: 1 }}>{nbSurveillance}</div>
-              <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>équipement{nbSurveillance > 1 ? 's' : ''}</div>
+              <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>poste technique{nbSurveillance > 1 ? 's' : ''}</div>
             </div>
             <div style={{ padding: '8px 10px', borderRadius: 7, background: '#f1f5f9', border: `1px solid #e2e8f0`, textAlign: 'center' }}>
               <div style={{ fontSize: 8.5, fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 3 }}>● Normal</div>
               <div style={{ fontSize: 18, fontWeight: 800, color: '#059669', fontFamily: "'Sora',sans-serif", lineHeight: 1 }}>{nbNormal}</div>
-              <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>équipement{nbNormal > 1 ? 's' : ''}</div>
+              <div style={{ fontSize: 8.5, color: C.text4, marginTop: 2 }}>poste technique{nbNormal > 1 ? 's' : ''}</div>
             </div>
           </div>
         )
@@ -482,6 +500,7 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
         ? new Date(item.dernierArret.startTime).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : null
       const cause = item.dernierArret?.cause || null
+      const zone = item.dernierArret?.zone || null
       const rcaId = sess?.id || closedSess?.id || null
       const rcaStatut = sess ? 'a-realiser' : closedSess ? 'cloturee' : 'a-realiser'
       const methode = sess?.methode || closedSess?.methode || null
@@ -494,6 +513,7 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
         freq: item.freq,
         datePanne,
         cause,
+        zone,
         rcaId,
         rcaStatut,
         methode,
@@ -581,7 +601,8 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th style={{ ...thStyle, width: 52, textAlign: 'center' }}>Rang</th>
-                <th style={{ ...thStyle, width: '22%' }}>Équipement</th>
+                <th style={{ ...thStyle, width: '22%' }}>Poste technique</th>
+                <th style={{ ...thStyle, width: 80 }}>Zone</th>
                 <th style={{ ...thStyle, width: 85 }}>Cumul (h)</th>
                 <th style={{ ...thStyle, width: 72 }}>Arrêts</th>
                 <th style={{ ...thStyle, width: 115 }}>Dernière panne</th>
@@ -606,6 +627,9 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
                     </td>
                     <td style={td()}>
                       <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13, color: '#1a3a6b' }}>{r.equipId}</div>
+                    </td>
+                    <td style={td()}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }}>{r.zone || '—'}</span>
                     </td>
                     <td style={td()}>
                       <span style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 13, color: '#1a3a6b' }}>{r.cumul.toFixed(1)}h</span>
@@ -677,6 +701,11 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
   const [histFinStr, setHistFinStr] = useState(today)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState('cumul')
+  const [filterImpact, setFilterImpact] = useState('all')
+  const [selectedCrossItemId, setSelectedCrossItemId] = useState(null)
+  const selectedCrossRowRef = useRef(null)
+  const [showScatterInfo, setShowScatterInfo] = useState(false)
 
   const paretoCumulRef = useRef(null)
   const paretoFreqRef = useRef(null)
@@ -781,12 +810,45 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
     return { total, clotures, aRealiser }
   }, [alertItems, rcaSessions])
 
+  useEffect(() => {
+    if (selectedCrossItemId && selectedCrossRowRef.current) {
+      selectedCrossRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [selectedCrossItemId])
+
   const tableData = badActors.filter(r => !search.trim() || r.id.toLowerCase().includes(search.toLowerCase()))
   const sortedByFreq = [...paretoItems].sort((a, b) => b.freq - a.freq)
   const totalFreq = sortedByFreq.reduce((s, r) => s + r.freq, 0)
-  let runFreq = 0
-  const badActorsFreq = sortedByFreq.filter(r => { const p = totalFreq > 0 ? r.freq / totalFreq * 100 : 0; const prev = runFreq; runFreq += p; return prev < 80 })
+  const topFreqItems = getParetoSegment(sortedByFreq, 'freq', 20)
+  const badActorsFreq = getParetoSegment(sortedByFreq, 'freq', 80)
   const pctCaptureFreq = totalFreq > 0 ? ((badActorsFreq.reduce((s, r) => s + r.freq, 0) / totalFreq) * 100).toFixed(1) : '0'
+  const totalCumul = paretoCumul || 0
+  let runCumul = 0
+  const sortedByCumul = [...paretoItems].sort((a, b) => b.cumul - a.cumul)
+  const topCumulItems = getParetoSegment(sortedByCumul, 'cumul', 20)
+  const topFreqIds = new Set(topFreqItems.map(r => r.id))
+  const topCumulIds = new Set(topCumulItems.map(r => r.id))
+  const freqThreshold = topFreqItems.length ? Math.min(...topFreqItems.map(r => r.freq)) : 0
+  const cumulThreshold = topCumulItems.length ? Math.min(...topCumulItems.map(r => r.cumul)) : 0
+  const crossItems = paretoItems.map(item => {
+    const isTopFreq = topFreqIds.has(item.id)
+    const isTopCumul = topCumulIds.has(item.id)
+    const criticite = isTopFreq && isTopCumul ? 'Critique' : (isTopFreq || isTopCumul) ? 'Élevé' : 'Faible'
+    return {
+      ...item,
+      isTopFreq,
+      isTopCumul,
+      criticite,
+    }
+  })
+  const crossTopItems = crossItems.filter(item => item.isTopFreq || item.isTopCumul)
+  // Show all items in the cross-analysis table, but allow filtering by criticity
+  const filteredCrossItems = filterImpact === 'all' ? crossItems : crossItems.filter(item => item.criticite === filterImpact)
+  const selectedCrossItem = filteredCrossItems.find(item => item.id === selectedCrossItemId) || null
+  const scatterMaxFreq = paretoItems.length ? Math.max(...paretoItems.map(item => item.freq), 1) : 1
+  const scatterMaxCumul = paretoItems.length ? Math.max(...paretoItems.map(item => item.cumul), 1) : 1
+  const scatterXThreshold = scatterMaxFreq > 0 ? 60 + (freqThreshold / scatterMaxFreq) * 440 : 60
+  const scatterYThreshold = scatterMaxCumul > 0 ? 320 - (cumulThreshold / scatterMaxCumul) * 280 : 320
 
   return (
     <div style={{ fontFamily: "'DM Sans', sans-serif" }}>
@@ -807,7 +869,7 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
           {
             key: 'alert',
             icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>,
-            label: 'Suivi des équipements RCA',
+            label: 'Suivi équipements RCA',
             labelLine1: null, labelLine2: null,
             stat: null,
             statColor: '#94a3b8',
@@ -863,21 +925,11 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
       <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: viewMode === 'alert' ? '14px 14px 0 0' : '14px 14px 0 0', padding: '12px 20px', borderBottom: `1px solid ${C.border}`, position: 'relative', zIndex: 50 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
-            {viewMode === 'alert' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: '#eef2f9', border: '1.5px solid #c7d4eb', flexShrink: 0 }}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1a3a6b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                  </svg>
-                </span>
-                <div>
-                  <div style={{ fontFamily: "'Sora',sans-serif", fontWeight: 800, fontSize: 13.5, color: '#0f172a' }}>Suivi des équipements RCA</div>
-                  <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 1 }}>Équipements identifiés · statut des analyses</div>
-                </div>
-              </div>
-            )}
-          </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>Tableau Pareto</div>
+              {viewMode === 'alert' && (
+                null
+              )}
+            </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {(viewMode === 'pareto' || viewMode === 'histogram') && (() => {
@@ -927,17 +979,25 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
               )
             })()}
 
-            {(viewMode === 'pareto' || viewMode === 'alert') && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: C.bg2, border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 12px', minWidth: 200 }}>
+              {(viewMode === 'pareto' || viewMode === 'alert') && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 8, minWidth: 200 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.text4} strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher un équipement..."
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher un poste technique..."
                   style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 12.5, color: C.text, fontFamily: "'DM Sans', sans-serif", width: '100%' }} />
+                {viewMode === 'pareto' && (
+                  <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ marginLeft: 8, padding: '6px 8px', borderRadius: 6, border: `1px solid ${C.border}`, background: '#fff', fontSize: 12, color: C.text4 }} title="Trier">
+                    <option value="cumul">Trier par cumul durée</option>
+                    <option value="freq">Trier par cumul fréquence</option>
+                  </select>
+                )}
                 {search && <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.text4, fontSize: 14, lineHeight: 1 }}>✕</button>}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      
 
       {/* ─── VUE 1 : PARETO ─────────────────────────────────────────────────── */}
       {viewMode === 'pareto' && (
@@ -957,62 +1017,71 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
             {/* ── BLOC 1 : Pareto Cumul Durée — Tableau + Graphique ── */}
             <div style={{ background: '#fff', borderBottom: `2px solid ${C.border}` }}>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px 14px', borderBottom: `1px solid ${C.border}`, background: '#fff' }}>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#0F1E35', fontFamily: "'Sora', sans-serif", letterSpacing: '-.2px' }}>
-                    Pareto cumul durée
-                  </div>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>
-                    Classement par temps d'arrêt cumulé · Règle 80/20
-                  </div>
-                </div>
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  {(() => {
-                    const nbAlerte = badActors.filter(r => r.statut === 'alert').length
-                    const nbSurveillance = badActors.filter(r => r.statut === 'watch').length
-                    const nbNormal = badActors.filter(r => r.statut === 'normal').length
-                    return (<>
-                      {nbNormal > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#ecfdf5', color: '#059669', border: '1.5px solid #a7f3d0' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669', display: 'inline-block' }} />{nbNormal} Normal{nbNormal > 1 ? 's' : ''}</span>}
-                      {nbSurveillance > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fffbeb', color: '#d97706', border: '1.5px solid #fde68a' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#d97706', display: 'inline-block' }} />{nbSurveillance} Surveillance</span>}
-                      {nbAlerte > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1.5px solid #fecaca' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#dc2626', display: 'inline-block' }} />{nbAlerte} Alerte{nbAlerte > 1 ? 's' : ''}</span>}
-                    </>)
-                  })()}
-                </div>
-              </div>
+              
 
-              {/* Tableau Cumul — Bad Actors uniquement (règle 80/20) */}
+              {/* Tableau unifié — Cumul et Fréquence (80/20) */}
               {(() => {
-                const tableCumul = badActors.filter(r => !search.trim() || r.id.toLowerCase().includes(search.toLowerCase()))
-                return tableCumul.length > 0 && (
+                const sorted = [...paretoItems].sort((a, b) => {
+                  if (sortBy === 'freq') return b.freq - a.freq
+                  // default: cumul
+                  return b.cumul - a.cumul
+                })
+                const totalC = paretoCumul || 0
+                const totalF = paretoNbArrets || 0
+                let runC = 0
+                let runF = 0
+                const rows = sorted.map((r, i) => {
+                  const pctC = totalC > 0 ? (r.cumul / totalC) * 100 : 0
+                  const pctF = totalF > 0 ? (r.freq / totalF) * 100 : 0
+                  runC += pctC
+                  runF += pctF
+                  return { ...r, rank: i + 1, pctC, cumPctC: Math.min(runC, 100), pctF, cumPctF: Math.min(runF, 100) }
+                }).filter(r => !search.trim() || r.id.toLowerCase().includes(search.toLowerCase()))
+
+                return rows.length > 0 && (
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
                       <thead>
-                        <tr style={{ background: C.bg, position: 'sticky', top: 0, zIndex: 1 }}>
-                          {['Rang', 'Poste technique', 'Zone géo.', 'Cumul (h)', 'Dernière panne', 'Cause arrêt', 'Statut'].map(h => (
+                        <tr style={{ background: C.bg, position: 'sticky', top: 0, zIndex: 1 }}>                          {['Rang', 'Poste technique', 'Zone géo.', 'Cumul durée (h)', 'Cumul fréquence (fois)', 'Dernière panne', 'Cause arrêt', 'Statut'].map(h => (
                             <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '.7px', borderBottom: `2px solid ${C.border}`, whiteSpace: 'nowrap' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {tableCumul.map((d, idx) => {
+                        {rows.map((d, idx) => {
                           const datePanne = d.dernierArret ? new Date(d.dernierArret.startTime).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
                           const cause = d.dernierArret?.cause || '—'
                           return (
-                            <tr key={d.id} style={{ borderBottom: `1px solid ${C.bg2}`, transition: 'background .1s' }}
+                            <tr key={d.id} style={{ borderBottom: `1px solid ${C.bg2}`, transition: 'background .1s', background: selectedCrossItemId === d.id ? '#eef2ff' : 'transparent', cursor: 'pointer' }}
+                              onClick={() => setSelectedCrossItemId(d.id)}
                               onMouseEnter={e => e.currentTarget.style.background = '#f0f5ff'}
-                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                              onMouseLeave={e => e.currentTarget.style.background = selectedCrossItemId === d.id ? '#eef2ff' : 'transparent'}>
                               <td style={{ padding: '12px 8px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#64748b', fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{idx + 1}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#64748b', fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{d.rank}</div>
                               </td>
                               <td style={{ padding: '12px 8px 12px 12px' }}>
                                 <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 13, color: C.navy, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.id}</div>
-                                <div style={{ fontSize: 10, color: C.text4, marginTop: 2 }}>{d.pct.toFixed(1)}% · Σ {d.cumulPct.toFixed(1)}%</div>
                               </td>
                               <td style={{ padding: '12px 12px', whiteSpace: 'nowrap' }}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }}>{d.dernierArret?.zone || '—'}</span>
                               </td>
                               <td style={{ padding: '12px 12px', whiteSpace: 'nowrap' }}>
                                 <div style={{ fontWeight: 800, fontSize: 14, color: C.navy, fontFamily: "'Sora', sans-serif" }}>{d.cumul.toFixed(1)}h</div>
+                                <div style={{ fontSize: 11, color: C.text4, marginTop: 4 }}>
+                                  <span style={{ display: 'inline-flex', gap: 8 }}>
+                                    <span>{d.pctC.toFixed(1)}%</span>
+                                    <span>{d.cumPctC.toFixed(1)}%</span>
+                                  </span>
+                                </div>
+                              </td>
+                              <td style={{ padding: '12px 12px', whiteSpace: 'nowrap' }}>
+                                <div style={{ fontWeight: 800, fontSize: 14, color: C.navy, fontFamily: "'Sora', sans-serif" }}>{d.freq} fois</div>
+                                <div style={{ fontSize: 11, color: C.text4, marginTop: 4 }}>
+                                  <span style={{ display: 'inline-flex', gap: 8 }}>
+                                    <span>{d.pctF.toFixed(1)}%</span>
+                                    <span>{d.cumPctF.toFixed(1)}%</span>
+                                  </span>
+                                </div>
                               </td>
                               <td style={{ padding: '12px 12px', color: C.text3, fontSize: 12, whiteSpace: 'nowrap' }}>{datePanne}</td>
                               <td style={{ padding: '12px 12px' }}>
@@ -1030,9 +1099,12 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
               {/* Graphique Cumul */}
               <div style={{ padding: '20px 20px 24px' }}>
                 <div ref={paretoCumulCardRef} style={{ background: '#fff', borderRadius: 12, border: `1px solid ${C.border}`, padding: '18px 16px 14px', boxShadow: '0 1px 8px rgba(15,30,53,.06)' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
-                    <div style={{ fontSize: 10.5, color: C.text4 }}>{badActors.length} équipements représentent <strong style={{ color: '#dc2626' }}>{pctCapture}%</strong> du temps d'arrêt total</div>
-                    <CopyButton cardRef={paretoCumulCardRef} filename="pareto-cumul-duree.png" />
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0F1E35', marginBottom: 6 }}>Pareto cumul durée</div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ fontSize: 10.5, color: C.text4 }}>{badActors.length} postes techniques représentent <strong style={{ color: '#dc2626' }}>{pctCapture}%</strong> du temps d'arrêt total</div>
+                      <CopyButton cardRef={paretoCumulCardRef} filename="pareto-cumul-duree.png" />
+                    </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 10 }}>
                     {[
@@ -1064,7 +1136,7 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
                   {badActors.length > 0 && (
                     <div style={{ marginTop: 12, padding: '10px 14px', background: '#eff6ff', borderLeft: '3px solid #1a3a6b', borderRadius: '0 8px 8px 0', fontSize: 12, color: '#1e3a5f', lineHeight: 1.6 }}>
                       <span style={{ fontWeight: 700 }}>Interprétation — </span>
-                      Les équipements identifiés ci-dessus concentrent la majorité du temps d'arrêt cumulé, conformément au principe de Pareto (80/20).
+                      Les postes techniques identifiés ci-dessus concentrent la majorité du temps d'arrêt cumulé, conformément au principe de Pareto (80/20).
                     </div>
                   )}
                 </div>
@@ -1075,89 +1147,20 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
             <div style={{ background: '#fff' }}>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px 14px', borderBottom: `1px solid ${C.border}`, background: '#fff' }}>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#0F1E35', fontFamily: "'Sora', sans-serif", letterSpacing: '-.2px' }}>
-                    Pareto cumul fréquence
-                  </div>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>
-                    Classement par nombre d'arrêts · Règle 80/20
-                  </div>
-                </div>
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  {(() => {
-                    const nbAlerte = badActorsFreq.filter(r => r.statut === 'alert').length
-                    const nbSurveillance = badActorsFreq.filter(r => r.statut === 'watch').length
-                    const nbNormal = badActorsFreq.filter(r => r.statut === 'normal').length
-                    return (<>
-                      {nbNormal > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#ecfdf5', color: '#059669', border: '1.5px solid #a7f3d0' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669', display: 'inline-block' }} />{nbNormal} Normal{nbNormal > 1 ? 's' : ''}</span>}
-                      {nbSurveillance > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fffbeb', color: '#d97706', border: '1.5px solid #fde68a' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#d97706', display: 'inline-block' }} />{nbSurveillance} Surveillance</span>}
-                      {nbAlerte > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fef2f2', color: '#dc2626', border: '1.5px solid #fecaca' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#dc2626', display: 'inline-block' }} />{nbAlerte} Alerte{nbAlerte > 1 ? 's' : ''}</span>}
-                    </>)
-                  })()}
-                </div>
+                {/* title removed */}
+                
               </div>
 
-              {/* Tableau Fréquence — Bad Actors uniquement (règle 80/20) */}
-              {(() => {
-                const totalF = sortedByFreq.reduce((s, r) => s + r.freq, 0)
-                let runF = 0
-                const badActorsFreqWithPct = sortedByFreq.reduce((acc, r) => {
-                  const pctF = totalF > 0 ? (r.freq / totalF) * 100 : 0
-                  const prev = runF; runF += pctF
-                  if (prev < 80) acc.push({ ...r, pctFreq: pctF, cumulPctFreq: Math.min(runF, 100) })
-                  return acc
-                }, [])
-                const tableFreq = badActorsFreqWithPct.filter(r => !search.trim() || r.id.toLowerCase().includes(search.toLowerCase()))
-                return tableFreq.length > 0 && (
-                  <div style={{ overflowX: 'auto', borderTop: `1px solid ${C.border}` }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
-                      <thead>
-                        <tr style={{ background: C.bg, position: 'sticky', top: 0, zIndex: 1 }}>
-                          {['Rang', 'Poste technique', 'Zone géo.', 'Cumul fréquence (fois)', 'Dernière panne', 'Cause arrêt', 'Statut'].map(h => (
-                            <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '.7px', borderBottom: `2px solid ${C.border}`, whiteSpace: 'nowrap' }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {tableFreq.map((d, idx) => {
-                          const datePanne = d.dernierArret ? new Date(d.dernierArret.startTime).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
-                          const cause = d.dernierArret?.cause || '—'
-                          return (
-                            <tr key={d.id} style={{ borderBottom: `1px solid ${C.bg2}`, transition: 'background .1s' }}
-                              onMouseEnter={e => e.currentTarget.style.background = '#f0f5ff'}
-                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                              <td style={{ padding: '12px 8px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 6, background: '#f1f5f9', border: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#64748b', fontFamily: "'DM Sans', sans-serif", flexShrink: 0 }}>{idx + 1}</div>
-                              </td>
-                              <td style={{ padding: '12px 8px 12px 12px' }}>
-                                <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 13, color: C.navy, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.id}</div>
-                                <div style={{ fontSize: 10, color: C.text4, marginTop: 2 }}>{d.pctFreq.toFixed(1)}% · Σ {d.cumulPctFreq.toFixed(1)}%</div>
-                              </td>
-                              <td style={{ padding: '12px 12px', whiteSpace: 'nowrap' }}>
-                                <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }}>{d.dernierArret?.zone || '—'}</span>
-                              </td>
-                              <td style={{ padding: '12px 12px', whiteSpace: 'nowrap' }}>
-                                <div style={{ fontWeight: 800, fontSize: 14, color: C.navy, fontFamily: "'Sora', sans-serif" }}>{d.freq} fois</div>
-                              </td>
-                              <td style={{ padding: '12px 12px', color: C.text3, fontSize: 12, whiteSpace: 'nowrap' }}>{datePanne}</td>
-                              <td style={{ padding: '12px 12px' }}>
-                                <span style={{ display: 'block', fontSize: 12, color: C.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={cause}>{cause}</span>
-                              </td>
-                              <td style={{ padding: '12px 12px', whiteSpace: 'nowrap' }}><StatutBadge statut={d.statut} /></td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              })()}
+              {/* Tableau Fréquence remplacé par tableau unifié */}
               {/* Graphique Fréquence */}
               <div style={{ padding: '20px 20px 24px' }}>
                 <div ref={paretoFreqCardRef} style={{ background: '#fff', borderRadius: 12, border: `1px solid ${C.border}`, padding: '18px 16px 14px', boxShadow: '0 1px 8px rgba(15,30,53,.06)' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
-                    <div style={{ fontSize: 10.5, color: C.text4 }}>{badActorsFreq.length} équipements représentent <strong style={{ color: '#dc2626' }}>{pctCaptureFreq}%</strong> du nombre total d'arrêts</div>
-                    <CopyButton cardRef={paretoFreqCardRef} filename="pareto-frequence-arrets.png" />
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0F1E35', marginBottom: 6 }}>Pareto cumul fréquence</div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ fontSize: 10.5, color: C.text4 }}>{badActorsFreq.length} postes techniques représentent <strong style={{ color: '#dc2626' }}>{pctCaptureFreq}%</strong> du nombre total d'arrêts</div>
+                      <CopyButton cardRef={paretoFreqCardRef} filename="pareto-frequence-arrets.png" />
+                    </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 10 }}>
                     {[
@@ -1189,9 +1192,137 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
                   {badActorsFreq.length > 0 && (
                     <div style={{ marginTop: 12, padding: '10px 14px', background: '#eff6ff', borderLeft: '3px solid #1a3a6b', borderRadius: '0 8px 8px 0', fontSize: 12, color: '#1e3a5f', lineHeight: 1.6 }}>
                       <span style={{ fontWeight: 700 }}>Interprétation — </span>
-                      Les équipements identifiés présentent la fréquence de défaillance la plus élevée et nécessitent une attention particulière en maintenance.
+                      Les postes techniques identifiés présentent la fréquence de défaillance la plus élevée et nécessitent une attention particulière en maintenance.
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: '#fff', borderTop: `1px solid ${C.border}`, padding: '22px 20px 24px' }}>
+              <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#0F172A' }}>Analyse de criticité croisée Pareto</div>
+                  <div style={{ fontSize: 12.5, color: C.text4, marginTop: 6, maxWidth: 560, lineHeight: 1.5, margin: '0 auto' }}>
+                    Méthode : sélection du top 20% des équipements selon la fréquence des pannes et la durée des arrêts, puis analyse de leur intersection afin d'identifier les équipements critiques à double impact.
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  {[
+                    { key: 'all', label: 'Tous', color: '#374151' },
+                    { key: 'Critique', label: 'Critique', color: '#dc2626' },
+                    { key: 'Élevé', label: 'Élevé', color: '#f59e0b' },
+                    { key: 'Faible', label: 'Faible', color: '#16a34a' },
+                  ].map(b => (
+                    <button
+                      key={b.key}
+                      onClick={() => setFilterImpact(b.key)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 10,
+                        border: `1.5px solid ${filterImpact === b.key ? (b.key === 'all' ? '#cbd5e1' : b.color) : '#e6eef8'}`,
+                        background: filterImpact === b.key ? (b.key === 'all' ? '#fff' : `${b.color}15`) : '#fff',
+                        color: filterImpact === b.key ? (b.key === 'all' ? '#111827' : b.color) : '#111827',
+                        fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                      }}
+                    >
+                      {b.key !== 'all' && <span style={{ width: 10, height: 10, borderRadius: 999, background: b.color, display: 'inline-block' }} />}
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'space-between', alignItems: 'stretch', width: '100%', overflow: 'visible' }}>
+                <div style={{ flex: '1.8 1 600px', minWidth: 360, maxWidth: 640, display: 'flex', flexDirection: 'column', alignItems: 'stretch', minHeight: 560 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10 }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', textAlign: 'center' }}>Scatter plot</div>
+                    <button onClick={() => setShowScatterInfo(true)} title="Info scatter" style={{ width: 34, height: 34, borderRadius: 8, border: `1.5px solid ${C.border}`, background: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 12h1v4h1"/></svg>
+                    </button>
+                  </div>
+                  <div style={{ width: '100%', background: '#fff', borderRadius: 18, border: `1px solid ${C.border}`, padding: 18, boxShadow: '0 8px 28px rgba(15,23,42,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'center', minHeight: 560 }}>
+                    <div style={{ width: '100%', maxWidth: 600, display: 'flex', justifyContent: 'center' }}>
+                      <ProfessionalScatter
+                        items={filteredCrossItems}
+                        allItems={crossItems}
+                        width={600}
+                        height={470}
+                        freqThreshold={freqThreshold}
+                        cumulThreshold={cumulThreshold}
+                        selectedId={selectedCrossItemId}
+                        onPointClick={(id) => setSelectedCrossItemId(id)}
+                        showLabels={false}
+                      />
+                    </div>
+                    {showScatterInfo && (
+                      <>
+                        <div onClick={() => setShowScatterInfo(false)} style={{ position: 'fixed', inset: 0, zIndex: 220 }} />
+                        <div style={{ position: 'fixed', top: '8%', left: '50%', transform: 'translateX(-50%)', zIndex: 221, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, boxShadow: '0 12px 40px rgba(2,6,23,.28)', padding: 18, width: 'min(900px, 96%)', maxHeight: '80vh', overflowY: 'auto' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: '#0F172A' }}>Les 4 quadrants</div>
+                            <button onClick={() => setShowScatterInfo(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 18 }}>✕</button>
+                          </div>
+                          {/* Table removed as requested; keep headings and explanation below */}
+                          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Comment lire les points</div>
+                          <ul style={{ marginTop: 0, lineHeight: 1.6 }}>
+                            <li>Les points verts (cluster) = équipements avec un comportement normal/acceptable</li>
+                            <li>Le point rouge = poste identifié comme critique (coin haut droite, priorité maximale)</li>
+                            <li>Le point orange = équipement à surveiller, proche de la zone critique</li>
+                            <li>La ligne pointillée orange marque les seuils au-delà desquels un équipement devient préoccupant</li>
+                          </ul>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                            <button onClick={() => setShowScatterInfo(false)} style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', fontWeight: 700 }}>Fermer</button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    <div style={{ marginTop: 20, fontSize: 13, color: C.text4, lineHeight: 1.6, textAlign: 'center', width: '100%' }}>
+                      <div>Axe X = fréquence des pannes</div>
+                      <div>Axe Y = durée des arrêts</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ flex: '1 1 650px', minWidth: 560, maxWidth: 720, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'stretch', minHeight: 560, marginTop: 16 }}>
+                  <div style={{ width: '100%', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 18, border: `1px solid ${C.border}`, padding: '20px 20px 24px', boxShadow: '0 6px 20px rgba(15,23,42,0.08)', minHeight: 560 }}>
+                    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed', color: C.text, minWidth: 0 }}>
+                        <colgroup>
+                          <col style={{ width: '52%' }} />
+                          <col style={{ width: '16%' }} />
+                          <col style={{ width: '16%' }} />
+                          <col style={{ width: '16%' }} />
+                        </colgroup>
+                        <thead>
+                          <tr style={{ background: '#f8fafc', position: 'sticky', top: 0, zIndex: 2 }}>
+                            {['Poste technique', 'Top fréquence', 'Top durée', 'Criticité'].map(h => (
+                              <th key={h} style={{ padding: '12px 10px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.7px', borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap', lineHeight: 1.2, overflow: 'visible', minWidth: h === 'Poste technique' ? 180 : 100 }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredCrossItems.map(item => (
+                            <tr
+                              key={item.id}
+                              ref={selectedCrossItemId === item.id ? selectedCrossRowRef : null}
+                              style={{ borderBottom: `1px solid ${C.bg2}`, background: selectedCrossItemId === item.id ? '#eef2ff' : 'transparent', transition: 'background .2s' }}
+                              onClick={() => setSelectedCrossItemId(item.id)}
+                            >
+                              <td style={{ padding: '12px 10px', whiteSpace: 'normal', wordBreak: 'break-word', fontWeight: 700, color: C.navy, lineHeight: 1.4 }}>{item.id}</td>
+                              <td style={{ padding: '12px 8px', textAlign: 'center', color: item.isTopFreq ? C.navy : C.text4 }}>{item.isTopFreq ? 'Oui' : 'Non'}</td>
+                              <td style={{ padding: '12px 8px', textAlign: 'center', color: item.isTopCumul ? C.navy : C.text4 }}>{item.isTopCumul ? 'Oui' : 'Non'}</td>
+                              <td style={{ padding: '12px 8px', textAlign: 'center' }}>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+                                  <span style={{ width: 10, height: 10, borderRadius: 999, background: item.criticite === 'Critique' ? '#dc2626' : item.criticite === 'Élevé' ? '#f59e0b' : '#16a34a' }} />
+                                  <span style={{ fontWeight: 700, color: C.text }}>{item.criticite}</span>
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

@@ -8,7 +8,7 @@
 //   ✦ Phrase "Les feuilles ✓ sans enfants = causes racines finales." supprimée
 //   ✦ Bouton "Valider l'analyse" dans l'en-tête supprimé (seul celui sous l'arbre reste)
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import C from '../../tokens/colors'
 import { api } from '../../lib/api'
 
@@ -239,6 +239,29 @@ export default function FiveWhyTree({ noeuds, onChange, phenomene }) {
 
   const push = useCallback((newTree) => { setTree(newTree); onChange(newTree) }, [onChange])
 
+  const containerRef = useRef(null)
+
+  // Wheel zoom (Ctrl/Cmd + wheel) and keyboard shortcuts (+, -, 0)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      const delta = e.deltaY
+      if (delta > 0) setZoom(z => Math.max(MIN_ZOOM, +(z - ZOOM_STEP).toFixed(2)))
+      else if (delta < 0) setZoom(z => Math.min(MAX_ZOOM, +(z + ZOOM_STEP).toFixed(2)))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    const onKey = (e) => {
+      if (e.key === '+' || (e.key === '=' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); setZoom(z => Math.min(MAX_ZOOM, +(z + ZOOM_STEP).toFixed(2))) }
+      if (e.key === '-' || (e.key === '_' && (e.ctrlKey || e.metaKey))) { e.preventDefault(); setZoom(z => Math.max(MIN_ZOOM, +(z - ZOOM_STEP).toFixed(2))) }
+      if (e.key === '0' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); setZoom(1) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { el.removeEventListener('wheel', onWheel); window.removeEventListener('keydown', onKey) }
+  }, [MIN_ZOOM, MAX_ZOOM, ZOOM_STEP])
+
   const handleStatut   = useCallback((id, s)  => push(updateNode(cloneTree(tree), id, n => ({ ...n, statut: s }))), [tree, push])
   const handleTexte    = useCallback((id, t)  => push(updateNode(cloneTree(tree), id, n => ({ ...n, texte: t }))), [tree, push])
   const handleAddDocs  = useCallback((id, ds) => push(updateNode(cloneTree(tree), id, n => ({ ...n, docs:[...(n.docs||(n.doc?[n.doc]:[])), ...ds], doc:undefined }))), [tree, push])
@@ -298,8 +321,8 @@ export default function FiveWhyTree({ noeuds, onChange, phenomene }) {
         ))}
       </div>
 
-      {/* Zone arbre — overflow hidden pour couper les lignes extérieures */}
-      <div style={{ border:'1px dashed #e2e8f0', borderRadius:8, overflow:'hidden' }}>
+      {/* Zone arbre — clipping horizontal des lignes, vertical visible pour éviter la disparition au zoom */}
+      <div style={{ border:'1px dashed #e2e8f0', borderRadius:8, overflowX:'hidden', overflowY:'visible' }}>
 
         {/* Bande étiquettes de niveau */}
         <div style={{ display:'flex', background:'#f8fafc', borderBottom:'1px solid #e2e8f0', padding:'5px 20px', gap:0 }}>
@@ -316,9 +339,9 @@ export default function FiveWhyTree({ noeuds, onChange, phenomene }) {
           ))}
         </div>
 
-        {/* Arbre scrollable + zoomé — overflow hidden sur les deux axes pour couper les lignes qui débordent */}
-        <div style={{ overflowX:'auto', overflowY:'hidden', paddingBottom:8 }}>
-          <div style={{ transformOrigin:'top left', transform:`scale(${zoom})`, transition:'transform .2s ease', width:`${100/zoom}%`, display:'flex', flexDirection:'column', gap:20, padding:20, minWidth:'max-content' }}>
+        {/* Arbre scrollable + zoomé */}
+        <div style={{ overflowX: 'auto', overflowY: 'auto', paddingBottom: 8 }} ref={containerRef}>
+          <div style={{ transformOrigin: 'top left', transform: `scale(${zoom})`, transition: 'transform .2s ease', width: `${100 / zoom}%`, display: 'flex', flexDirection: 'column', gap: 20, padding: 20, minWidth: 'max-content' }}>
             {tree.map(noeud => (
               <Noeud key={noeud.id} noeud={noeud} depth={0}
                 onChangeStatut={handleStatut} onChangeTexte={handleTexte}

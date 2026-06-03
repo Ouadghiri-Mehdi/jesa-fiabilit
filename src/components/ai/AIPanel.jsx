@@ -55,7 +55,16 @@ export default function AIPanel({ equipId, phenomene, methode }) {
         onClick={() => setOpen(o => !o)}
         style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 18px', background: 'linear-gradient(135deg, #0f1f3d 0%, #1a3a6b 100%)', cursor: 'pointer', userSelect: 'none' }}
       >
-        <span style={{ fontSize: 22 }}>🤖</span>
+        <div style={{ width: 36, height: 36, borderRadius: 12, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a3a6b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="6" y="7" width="12" height="10" rx="3" />
+            <path d="M9 11h6" />
+            <path d="M9 15h6" />
+            <path d="M8 7V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+            <path d="M10 3v2" />
+            <path d="M14 3v2" />
+          </svg>
+        </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', fontFamily: "'Sora',sans-serif" }}>
             Assistant IA — {methodeLabel}
@@ -135,7 +144,14 @@ export default function AIPanel({ equipId, phenomene, methode }) {
           {/* Loading */}
           {loading && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: '#fff', borderRadius: 10, border: `1px solid ${C.border}` }}>
-              <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg, #1a3a6b, #1e4d8c)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🤖</div>
+              <div style={{ width: 30, height: 30, borderRadius: 9, background: 'linear-gradient(135deg, #1a3a6b, #1e4d8c)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="6" y="7" width="12" height="10" rx="3" />
+                  <path d="M9 11h6" />
+                  <path d="M9 15h6" />
+                  <path d="M8 7V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+                </svg>
+              </div>
               <div style={{ display: 'flex', gap: 5 }}>
                 {[0, 1, 2].map(i => (
                   <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: '#1a3a6b', animation: `aipulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />
@@ -159,7 +175,13 @@ export default function AIPanel({ equipId, phenomene, methode }) {
                 dangerouslySetInnerHTML={{ __html: reply }}
               />
               <div style={{ padding: '8px 14px', background: '#f8fafd', borderTop: `1px solid ${C.border}`, fontSize: 10.5, color: C.text4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>🤖</span> Réponse générée par IA · Basée sur l'historique interne · À valider par le fiabiliste
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a3a6b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <rect x="6" y="7" width="12" height="10" rx="3" />
+                  <path d="M9 11h6" />
+                  <path d="M9 15h6" />
+                  <path d="M8 7V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+                </svg>
+                Réponse générée par IA · Basée sur l'historique interne · À valider par le fiabiliste
               </div>
             </div>
           )}

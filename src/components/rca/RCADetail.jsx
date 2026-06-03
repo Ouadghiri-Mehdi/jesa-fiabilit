@@ -7,12 +7,14 @@
 // 🔥 CORRECTION : cumul_arret basé sur la session active (OPEN)
 
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { useAuth } from '../../auth/AuthContext'
 import C from '../../tokens/colors'
 import FiveWhyTree from './FiveWhyTree'
 import QuickKaizenWheel from './QuickKaizenWheel'
 import ActionsTable from './ActionsTable'
 import AgentIA from './AgentIA'
 import { api } from '../../lib/api'
+import { pushClosedRcaNotification } from '../../auth/AuthContext'
 
 function formatDuree(ms) {
   if (!ms || ms < 1000) return '—'
@@ -25,10 +27,20 @@ function formatDuree(ms) {
   return `${sec}s`
 }
 
+function formatDateTime(value) {
+  if (!value) return null
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  return {
+    date: d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+    time: d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+  }
+}
+
 const STATUT_CFG = {
-  'non-commencee': { label: 'Non commencée', bg: '#fef2f2', color: '#dc2626', border: '#fecaca', dot: '#dc2626' },
-  'en-cours':      { label: 'En cours',      bg: '#eef2f7', color: '#334155', border: '#d1dbe8', dot: '#334155' },
-  'cloturee':      { label: 'Clôturée',      bg: '#ecfdf5', color: '#059669', border: '#a7f3d0', dot: '#059669' },
+  'non-commencee': { label: 'Pas commencé', bg: C.redBg,    color: C.red,    border: C.redB,    dot: C.red },
+  'en-cours':      { label: 'En cours',      bg: C.orangeBg, color: C.orange, border: C.orangeB, dot: C.orange },
+  'cloturee':      { label: 'Clôturée',      bg: C.greenBg,  color: C.green,  border: C.greenB,  dot: C.green },
 }
 
 function getFeuilllesValidees(noeuds) {
@@ -98,6 +110,7 @@ function ChoixMethodePopup({ session, onChoisir, onClose }) {
 
 // ─── Composant principal ───────────────────────────────────────────────────────
 export default function RCADetail({ session, onUpdate, onBack, preSelectedParticipants = [] }) {
+  const { user } = useAuth()
   const isN2 = session.niveau === 2
   const methodeInitiale = session.methode || (isN2 ? '5why' : null)
   const lockedInitial   = !!session.methode || isN2
@@ -263,6 +276,15 @@ export default function RCADetail({ session, onUpdate, onBack, preSelectedPartic
     onUpdateRef.current({ ...sessionRef.current, methode: methodeRef.current, noeuds, actionsGenerees: actionsRef.current, statut: 'cloturee', participants: participantsData, tempsAnalyse: total, chronoStartedAt: null, dateHeureFin: new Date().toISOString() })
     // Clôture aussi l'incident lié dans arrets (session_status → CLOSED)
     api.closeRcaSession(sessionRef.current.id).catch(err => console.error('closeRcaSession:', err))
+    if (user) {
+      pushClosedRcaNotification(user.siteKey, user.id, {
+        site: sessionRef.current.site || user.site || null,
+        posteTechnique: sessionRef.current.posteTechnique || sessionRef.current.equipId || null,
+        designation: sessionRef.current.designation || null,
+        zone: sessionRef.current.zone || null,
+        rcaId: sessionRef.current.id || null,
+      })
+    }
   }
 
   const handleActionChange = useCallback((a) => {
@@ -536,30 +558,42 @@ export default function RCADetail({ session, onUpdate, onBack, preSelectedPartic
           </div>
         </div>
 
-        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 16px', background:'#f8fafc', borderTop:'1px solid #f1f5f9' }}>
-          {[
-            session.dateHeureDebut ? {
-              icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
-              label: 'DÉBUT RCA',
-              value: (() => { const d = new Date(session.dateHeureDebut); return `${d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' })} ${d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}` })(),
-            } : null,
-            session.statut === 'cloturee' && session.dateHeureFin ? {
-              icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 14 11 16 15 12"/></svg>,
-              label: 'FIN RCA',
-              value: (() => { const d = new Date(session.dateHeureFin); return `${d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' })} ${d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}` })(),
-            } : null,
-            // 🔥 CORRECTION : cumul_arret affiché tel quel (vient de la session active)
-            { icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>, label: 'CUMUL ARRÊT', value: session.cumulArret != null ? `${session.cumulArret} h` : '—' },
-            { icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>, label: 'FRÉQUENCE', value: session.frequence != null ? `${session.frequence} /mois` : '—' },
-            { icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/></svg>, label: 'DURÉE ANALYSE', value: formatDuree(chronoDisplay), live: session.statut !== 'cloturee' },
-          ].filter(Boolean).map(({ icon, label, value, live }) => (
-            <div key={label} style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'4px 10px', borderRadius:20, background: live && chronoDisplay > 0 ? '#eff6ff' : '#f1f5f9', border:`1px solid ${live && chronoDisplay > 0 ? '#bfdbfe' : '#e2e8f0'}` }}>
-              <span style={{ color: live && chronoDisplay > 0 ? '#3b82f6' : '#94a3b8', display:'flex', alignItems:'center' }}>{icon}</span>
-              <span style={{ fontSize:9.5, fontWeight:700, color: live && chronoDisplay > 0 ? '#3b82f6' : '#94a3b8', textTransform:'uppercase', letterSpacing:'.7px' }}>{label}</span>
-              <span style={{ fontSize:12, fontWeight:700, color: live && chronoDisplay > 0 ? '#1d4ed8' : '#64748b', fontFamily:"'Sora',sans-serif" }}>{value}</span>
-              {live && chronoDisplay > 0 && <span style={{ width:5, height:5, borderRadius:'50%', background:'#3b82f6', display:'inline-block', animation:'pulse 2s infinite' }} />}
-            </div>
-          ))}
+        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'5px 16px', background:'#f8fafc', borderTop:'1px solid #f1f5f9', flexWrap:'wrap' }}>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8, flex:1, minWidth:0 }}>
+            {[
+              session.dateHeureDebut ? {
+                icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+                label: 'DÉBUT RCA',
+                value: (() => { const d = new Date(session.dateHeureDebut); return `${d.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric' })} ${d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}` })(),
+              } : null,
+              session.statut === 'cloturee' ? (() => {
+                const dt = formatDateTime(session.dateHeureFin || session.updatedAt)
+                return {
+                  icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 14 11 16 15 12"/></svg>,
+                  label: 'FIN RCA',
+                  value: dt ? `${dt.date} ${dt.time}` : '—',
+                }
+              })() : null,
+              // 🔥 CORRECTION : cumul_arret affiché tel quel (vient de la session active)
+              { icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>, label: 'CUMUL ARRÊT', value: session.cumulArret != null ? `${session.cumulArret} h` : '—' },
+              { icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>, label: 'FRÉQUENCE', value: session.frequence != null ? `${session.frequence} /mois` : '—' },
+              { icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/></svg>, label: 'DURÉE ANALYSE', value: formatDuree(chronoDisplay), live: session.statut !== 'cloturee' },
+            ].filter(Boolean).map(({ icon, label, value, live }) => {
+              // Keep the entire info chips bar neutral grey (background + border + label)
+              const bg = C.bg2
+              const border = C.border
+              const labelColor = C.text4
+              const dotColor = live && chronoDisplay > 0 ? '#3b82f6' : undefined
+              return (
+                <div key={label} style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'4px 10px', borderRadius:20, background: bg, border:`1px solid ${border}` }}>
+                  <span style={{ color: labelColor, display:'flex', alignItems:'center' }}>{icon}</span>
+                  <span style={{ fontSize:9.5, fontWeight:700, color: labelColor, textTransform:'uppercase', letterSpacing:'.7px' }}>{label}</span>
+                  <span style={{ fontSize:12, fontWeight:700, color: C.text3, fontFamily:"'Sora',sans-serif" }}>{value}</span>
+                  {live && chronoDisplay > 0 && <span style={{ width:5, height:5, borderRadius:'50%', background: dotColor || '#3b82f6', display:'inline-block', animation:'pulse 2s infinite' }} />}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
 

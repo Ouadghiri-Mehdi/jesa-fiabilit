@@ -159,6 +159,16 @@ export default function ParetoChart({ arrets, seuils }) {
       {/* Graphique SVG */}
       <div style={{ overflowX: 'auto' }}>
         <svg width={width} height={height} style={{ display: 'block', margin: '0 auto' }}>
+          {/* Definitions SVG pour marqueurs (flèches) */}
+          <defs>
+            <marker id="arrowRight" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L10,5 L0,10 z" fill="#ff2b7a" />
+            </marker>
+            <marker id="arrowUp" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,10 L5,0 L10,10 z" fill="#ff2b7a" />
+            </marker>
+          </defs>
+
           {/* Axe Y (vertical) */}
           <line
             x1={margin.left}
@@ -167,6 +177,7 @@ export default function ParetoChart({ arrets, seuils }) {
             y2={margin.top + graphHeight}
             stroke={C.border}
             strokeWidth="1.5"
+            markerStart="url(#arrowUp)"
           />
           
           {/* Axe X (horizontal) */}
@@ -177,6 +188,7 @@ export default function ParetoChart({ arrets, seuils }) {
             y2={margin.top + graphHeight}
             stroke={C.border}
             strokeWidth="1.5"
+            markerEnd="url(#arrowRight)"
           />
           
           {/* Grille horizontale */}
