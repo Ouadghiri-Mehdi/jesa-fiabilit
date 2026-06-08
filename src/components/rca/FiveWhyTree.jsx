@@ -234,6 +234,8 @@ export default function FiveWhyTree({ noeuds, onChange, phenomene }) {
   )
   const [zoom, setZoom] = useState(1)
   const [pendingDelete, setPendingDelete] = useState(null)
+  const [copyState, setCopyState] = useState('idle')
+  const treeCardRef = useRef(null)
 
   const MIN_ZOOM = 0.4, MAX_ZOOM = 1.5, ZOOM_STEP = 0.1
 
@@ -275,8 +277,37 @@ export default function FiveWhyTree({ noeuds, onChange, phenomene }) {
   const maxDepth = getMaxDepth(tree)
   const colWidths = Array.from({ length: maxDepth + 1 }, (_, d) => CARD_W + (d < maxDepth ? H_CONN : 0))
 
+  const handleCopy = async () => {
+    if (copyState === 'loading' || !treeCardRef.current) return
+    setCopyState('loading')
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const canvas = await html2canvas(treeCardRef.current, {
+        scale: 2, useCORS: true, backgroundColor: '#ffffff',
+        scrollX: 0, scrollY: -window.scrollY,
+      })
+      await new Promise(resolve => {
+        canvas.toBlob(async blob => {
+          try {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+          } catch {
+            const a = document.createElement('a')
+            a.href = URL.createObjectURL(blob)
+            a.download = 'arbre-causes.png'
+            a.click()
+          }
+          resolve()
+        }, 'image/png', 1.0)
+      })
+      setCopyState('done')
+      setTimeout(() => setCopyState('idle'), 2500)
+    } catch {
+      setCopyState('idle')
+    }
+  }
+
   return (
-    <div style={{ background:'#fff', border:'1.5px solid #e2e8f0', borderRadius:12, padding:24, boxShadow:'0 1px 3px rgba(15,30,53,.07)' }}>
+    <div ref={treeCardRef} style={{ background:'#fff', border:'1.5px solid #e2e8f0', borderRadius:12, padding:24, boxShadow:'0 1px 3px rgba(15,30,53,.07)' }}>
 
       {pendingDelete && (
         <ConfirmDeletePopup
@@ -297,6 +328,24 @@ export default function FiveWhyTree({ noeuds, onChange, phenomene }) {
               ✦ {feuilles.length} cause(s) racine(s)
             </div>
           )}
+          {/* Copier */}
+          <button onClick={handleCopy} title="Copier l'arbre en image HD"
+            style={{
+              display:'inline-flex', alignItems:'center', justifyContent:'center',
+              width:30, height:30, borderRadius:7, flexShrink:0,
+              border:`1.5px solid ${copyState==='done'?'#059669':copyState==='loading'?'#e2e8f0':'#cbd5e1'}`,
+              background: copyState==='done'?'#ecfdf5':'#fff',
+              color: copyState==='done'?'#059669':copyState==='loading'?'#94a3b8':'#64748b',
+              cursor: copyState==='loading'?'wait':'pointer', transition:'all .2s',
+            }}>
+            {copyState==='done' ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            ) : copyState==='loading' ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{animation:'spin 1s linear infinite'}}><circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="10"/></svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            )}
+          </button>
           {/* Zoom */}
           <div style={{ display:'flex', alignItems:'center', gap:4, background:'#f8fafc', border:'1.5px solid #e2e8f0', borderRadius:20, padding:'3px 10px' }}>
             <button onClick={() => setZoom(z => Math.max(MIN_ZOOM, +(z-ZOOM_STEP).toFixed(1)))} disabled={zoom<=MIN_ZOOM}

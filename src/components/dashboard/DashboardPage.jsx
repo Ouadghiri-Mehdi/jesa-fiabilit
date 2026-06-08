@@ -617,6 +617,36 @@ export default function DashboardPage() {
   const [periode, setPeriode] = useState('mois')
   const [rawSessions, setRawSessions] = useState([])
   const [lastUpdate,  setLastUpdate]  = useState(null)
+  const [exportingPDF, setExportingPDF] = useState(false)
+  const dashboardRef = useRef(null)
+
+  const handleExportPDF = async () => {
+    if (exportingPDF || !dashboardRef.current) return
+    setExportingPDF(true)
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const { jsPDF } = await import('jspdf')
+      const canvas = await html2canvas(dashboardRef.current, {
+        scale: 2, useCORS: true, backgroundColor: '#fff', scrollX: 0, scrollY: -window.scrollY,
+      })
+      const imgData = canvas.toDataURL('image/png')
+      const imgW = canvas.width, imgH = canvas.height
+      const pdfW = 1190
+      const pdfH = Math.round((imgH / imgW) * pdfW)
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [pdfW, pdfH + 40] })
+      pdf.setFillColor(11, 46, 99)
+      pdf.rect(0, 0, pdfW, 34, 'F')
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFontSize(13); pdf.setFont('helvetica', 'bold')
+      pdf.text('JESA Reliability Hub — Dashboard Fiabilité', 20, 22)
+      const now = new Date().toLocaleDateString('fr-FR')
+      pdf.setFontSize(9); pdf.setFont('helvetica', 'normal')
+      pdf.text(`Exporté le ${now}`, pdfW - 20, 22, { align: 'right' })
+      pdf.addImage(imgData, 'PNG', 0, 36, pdfW, pdfH)
+      pdf.save(`dashboard-fiabilite-${now.replace(/\//g, '-')}.pdf`)
+    } catch (e) { console.error(e) }
+    setExportingPDF(false)
+  }
 
   const { arrets: rawArrets, seuils } = useTUM()
 
@@ -778,7 +808,7 @@ export default function DashboardPage() {
   const hasData = rawArrets.length > 0 || rawSessions.length > 0
 
   return (
-    <div style={{ animation: 'fadeUp .2s ease', fontFamily: "'DM Sans',sans-serif" }}>
+    <div ref={dashboardRef} style={{ animation: 'fadeUp .2s ease', fontFamily: "'DM Sans',sans-serif" }}>
 
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 10 }}>
@@ -795,6 +825,18 @@ export default function DashboardPage() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={handleExportPDF} disabled={exportingPDF} style={{
+            padding: '6px 14px', borderRadius: 8, border: '1.5px solid #fecaca',
+            background: exportingPDF ? '#fff7f7' : '#fef2f2', cursor: exportingPDF ? 'wait' : 'pointer',
+            fontSize: 12, fontWeight: 700, color: '#dc2626',
+            fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 5, transition: 'all .15s',
+          }}>
+            {exportingPDF
+              ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}><circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="10"/></svg>
+              : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+            }
+            {exportingPDF ? 'Export…' : 'Export PDF'}
+          </button>
           <button onClick={loadData} style={{
             padding: '6px 12px', borderRadius: 8, border: `1px solid ${C.border}`,
             background: '#fff', cursor: 'pointer', fontSize: 12, color: C.text3,

@@ -198,6 +198,7 @@ export default function TUMPage() {
         <div style={{ animation: 'fadeUp .2s ease' }}>
           <BadActors
             arrets={arretsCycle}
+            arretsAll={arrets}
             seuils={seuils}
             onLancerRCA={handleLancerRCA}
             viewMode={badActorsViewMode}

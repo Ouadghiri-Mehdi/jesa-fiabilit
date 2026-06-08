@@ -120,17 +120,7 @@ export default function HubPage() {
         borderBottom: '1px solid #e2e8f0',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: '#0b2e63',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
-          </div>
+          <img src="/jesa-logo.png" alt="JESA" style={{ width: 36, height: 36, objectFit: 'contain', borderRadius: 8 }} />
           <span style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 16, color: '#0b2e63' }}>
             JESA Reliability Hub
           </span>
@@ -187,8 +177,8 @@ export default function HubPage() {
 
         <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', justifyContent: 'center' }}>
           <WorkspaceCard
-            title="Mon Site"
-            subtitle={`Accéder à votre espace ${user?.site}  TUM, RCA, Actions, Historique`}
+            title="My Workspace"
+            subtitle={`Accéder à votre espace ${user?.site} — TUM, RCA, Actions, Historique`}
             filled
             onClick={goToSite}
             icon={
@@ -201,7 +191,7 @@ export default function HubPage() {
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: 280 }}>
             <WorkspaceCard
-              title={notifCount > 0 ? 'Nouvelle RCA' : 'Tracking Global'}
+              title={notifCount > 0 ? 'Nouvelle RCA' : 'JESA Knowledge & Lesson Learned'}
               subtitle="Consulter les RCA clôturées de tous les sites en lecture seule"
               bg="#e2e8f0"
               onClick={goToGlobal}

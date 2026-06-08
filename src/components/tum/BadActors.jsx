@@ -8,6 +8,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import C from '../../tokens/colors'
 import ProfessionalScatter from './ProfessionalScatter'
 import { getStatut } from '../../hooks/useTUM'
+import { jsPDF } from 'jspdf'
 import { api } from '../../lib/api'
 
 // ─── Helper date display ───────────────────────────────────────────────────────
@@ -140,6 +141,94 @@ function CopyButton({ cardRef, filename }) {
         </span>
       )}
     </div>
+  )
+}
+
+// ─── Export PDF ───────────────────────────────────────────────────────────────
+async function exportCardAsPDF(cardEl, filename = 'pareto.pdf') {
+  const allSvgs = Array.from(cardEl.querySelectorAll('svg'))
+  const svg = allSvgs.reduce((best, s) => {
+    const r = s.getBoundingClientRect()
+    return (!best || r.width * r.height > best._area)
+      ? Object.assign(s, { _area: r.width * r.height })
+      : best
+  }, null)
+  if (!svg) return
+
+  const rect = svg.getBoundingClientRect()
+  const vb = svg.getAttribute('viewBox')
+  const [, , vbW, vbH] = vb ? vb.split(' ').map(Number) : [0, 0, rect.width, rect.height]
+  const W = Math.round(vbW || rect.width)
+  const H = Math.round(vbH || rect.height)
+
+  const clone = svg.cloneNode(true)
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  clone.setAttribute('width', W)
+  clone.setAttribute('height', H)
+  const serializer = new XMLSerializer()
+  const svgStr = '<?xml version="1.0" encoding="UTF-8"?>' + serializer.serializeToString(clone)
+  const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+
+  await new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      const scale = 3
+      canvas.width = W * scale
+      canvas.height = H * scale
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.scale(scale, scale)
+      ctx.drawImage(img, 0, 0)
+      URL.revokeObjectURL(url)
+
+      const imgData = canvas.toDataURL('image/png')
+      const orientation = W > H ? 'landscape' : 'portrait'
+      const pdf = new jsPDF({ orientation, unit: 'px', format: [W, H] })
+      pdf.addImage(imgData, 'PNG', 0, 0, W, H)
+      pdf.save(filename)
+      resolve()
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
+function PDFButton({ cardRef, filename }) {
+  const [state, setState] = useState('idle')
+  return (
+    <button
+      onClick={async () => {
+        if (!cardRef?.current || state === 'loading') return
+        setState('loading')
+        try {
+          await exportCardAsPDF(cardRef.current, filename || 'pareto.pdf')
+          setState('done')
+          setTimeout(() => setState('idle'), 2500)
+        } catch { setState('idle') }
+      }}
+      title="Exporter en PDF"
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        gap: 5, padding: '4px 10px', borderRadius: 7, fontSize: 11.5, fontWeight: 600,
+        border: `1.5px solid ${state === 'done' ? '#059669' : '#e2e8f0'}`,
+        background: state === 'done' ? '#ecfdf5' : '#fff',
+        color: state === 'done' ? '#059669' : '#dc2626',
+        cursor: state === 'loading' ? 'wait' : 'pointer',
+        transition: 'all .2s', flexShrink: 0,
+      }}
+    >
+      {state === 'loading' ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}><circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="10"/></svg>
+      ) : state === 'done' ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      )}
+      {state === 'done' ? 'Exporté !' : 'PDF'}
+    </button>
   )
 }
 
@@ -481,8 +570,168 @@ function StatutBadge({ statut }) {
   )
 }
 
+// ─── Export PDF vue Pareto complète ──────────────────────────────────────────
+function ExportParetoPDFButton({ containerRef }) {
+  const [state, setState] = useState('idle')
+
+  const handleExport = async () => {
+    if (state === 'loading' || !containerRef?.current) return
+    setState('loading')
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const { jsPDF } = await import('jspdf')
+
+      const el = containerRef.current
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#f8fafd',
+        scrollX: 0,
+        scrollY: -window.scrollY,
+      })
+
+      const imgData = canvas.toDataURL('image/png')
+      const imgW = canvas.width
+      const imgH = canvas.height
+      const pdfW = 1190  // A3 landscape width in px ~
+      const pdfH = Math.round((imgH / imgW) * pdfW)
+
+      const pdf = new jsPDF({ orientation: imgW > imgH ? 'landscape' : 'portrait', unit: 'px', format: [pdfW, pdfH + 40] })
+      // En-tête
+      pdf.setFillColor(11, 46, 99)
+      pdf.rect(0, 0, pdfW, 34, 'F')
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFontSize(13)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('JESA Reliability Hub — Vue Pareto Bad Actors', 20, 22)
+      const now = new Date().toLocaleDateString('fr-FR')
+      pdf.setFontSize(9)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(`Exporté le ${now}`, pdfW - 20, 22, { align: 'right' })
+      // Contenu
+      pdf.addImage(imgData, 'PNG', 0, 36, pdfW, pdfH)
+      pdf.save(`pareto-bad-actors-${now.replace(/\//g, '-')}.pdf`)
+
+      setState('done')
+      setTimeout(() => setState('idle'), 2500)
+    } catch (e) { console.error(e); setState('idle') }
+  }
+
+  return (
+    <button onClick={handleExport}
+      title="Exporter toute la vue Pareto en PDF"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+        border: `1.5px solid ${state === 'done' ? '#059669' : '#dc2626'}`,
+        background: state === 'done' ? '#ecfdf5' : '#fef2f2',
+        color: state === 'done' ? '#059669' : '#dc2626',
+        cursor: state === 'loading' ? 'wait' : 'pointer',
+        transition: 'all .2s', fontFamily: "'DM Sans', sans-serif",
+      }}
+    >
+      {state === 'loading' ? (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}><circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="10"/></svg>
+      ) : state === 'done' ? (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      ) : (
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      )}
+      {state === 'loading' ? 'Export en cours…' : state === 'done' ? 'Exporté !' : 'Exporter Pareto PDF'}
+    </button>
+  )
+}
+
+// ─── Export PDF Suivi équipements ────────────────────────────────────────────
+function PDFSuiviButton({ rows }) {
+  const [state, setState] = useState('idle')
+  const handleExport = async () => {
+    if (state === 'loading' || !rows.length) return
+    setState('loading')
+    try {
+      const { jsPDF } = await import('jspdf')
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
+      const pageW = pdf.internal.pageSize.getWidth()
+      const now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+
+      pdf.setFillColor(11, 46, 99)
+      pdf.rect(0, 0, pageW, 36, 'F')
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFontSize(13)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('JESA Reliability Hub — Suivi Équipements RCA', 20, 23)
+      pdf.setFontSize(9)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(`Exporté le ${now}`, pageW - 20, 23, { align: 'right' })
+
+      const cols = ['Rang', 'Poste technique', 'Zone', 'Cumul (h)', 'Arrêts', 'Dernière panne', 'Cause d\'arrêt', 'Statut', 'Méthode']
+      const colWidths = [30, 140, 40, 50, 40, 70, 150, 55, 65]
+      let x = 20, y = 52
+
+      pdf.setFillColor(240, 244, 255)
+      pdf.rect(20, y - 11, pageW - 40, 15, 'F')
+      pdf.setTextColor(26, 58, 107)
+      pdf.setFontSize(7.5)
+      pdf.setFont('helvetica', 'bold')
+      cols.forEach((col, i) => { pdf.text(col, x + 2, y); x += colWidths[i] })
+
+      y += 8
+      rows.forEach((r, idx) => {
+        if (y > 540) { pdf.addPage(); y = 30 }
+        pdf.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 255)
+        pdf.rect(20, y - 9, pageW - 40, 13, 'F')
+        pdf.setTextColor(15, 23, 61)
+        pdf.setFont('helvetica', r.rcaStatut === 'cloturee' ? 'normal' : 'bold')
+        pdf.setFontSize(7)
+        x = 20
+        const vals = [
+          String(r.rang),
+          r.equipId || '—',
+          r.zone || '—',
+          r.cumul ? `${r.cumul.toFixed(1)}h` : '0h',
+          r.freq ? `${r.freq} fois` : '0',
+          r.datePanne || '—',
+          r.cause ? r.cause.slice(0, 40) : '—',
+          r.rcaStatut === 'cloturee' ? 'Clôturé' : 'À réaliser',
+          r.methode === '5why' ? 'Arbre De Causes' : r.methode === 'kaizen' ? 'Quick Kaizen' : '—',
+        ]
+        vals.forEach((v, i) => { pdf.text(String(v), x + 2, y); x += colWidths[i] })
+        y += 13
+      })
+
+      pdf.save(`suivi-equipements-rca-${now.replace(/\//g, '-')}.pdf`)
+      setState('done')
+      setTimeout(() => setState('idle'), 2500)
+    } catch (e) { console.error(e); setState('idle') }
+  }
+
+  return (
+    <button onClick={handleExport} disabled={!rows.length}
+      title="Exporter le tableau en PDF"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '5px 12px', borderRadius: 7, fontSize: 11.5, fontWeight: 600,
+        border: `1.5px solid ${state === 'done' ? '#059669' : '#e2e8f0'}`,
+        background: state === 'done' ? '#ecfdf5' : '#fff',
+        color: state === 'done' ? '#059669' : '#dc2626',
+        cursor: rows.length ? 'pointer' : 'not-allowed', opacity: rows.length ? 1 : 0.5,
+        transition: 'all .2s',
+      }}
+    >
+      {state === 'loading' ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}><circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="10"/></svg>
+      ) : state === 'done' ? (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      )}
+      {state === 'done' ? 'Exporté !' : 'Export PDF'}
+    </button>
+  )
+}
+
 // ─── Vue Suivi RCA — Tableau style Image 1 ─────────────────────────────────────
-function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, setSearch }) {
+function RCASuiviTableView({ alertItems, arrets, arretsAll, seuils, onLancerRCA, search, setSearch }) {
   const [sessions, setSessions] = useState([])
   const [filterStatut, setFilterStatut] = useState('all')
 
@@ -493,33 +742,55 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
   const allRows = useMemo(() => {
     const rows = []
 
+    // 1. Équipements OPEN — cycle actif en cours
     alertItems.forEach(item => {
       const sess = sessions.find(s => s.equipId === item.id && s.statut !== 'cloturee')
-      const closedSess = sessions.find(s => s.equipId === item.id && s.statut === 'cloturee')
       const datePanne = item.dernierArret
         ? new Date(item.dernierArret.startTime).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
         : null
-      const cause = item.dernierArret?.cause || null
-      const zone = item.dernierArret?.zone || null
-      const rcaId = sess?.id || closedSess?.id || null
-      const rcaStatut = sess ? 'a-realiser' : closedSess ? 'cloturee' : 'a-realiser'
-      const methode = sess?.methode || closedSess?.methode || null
-
       rows.push({
-        key: item.id,
+        key: `open-${item.id}`,
         rang: 0,
         equipId: item.id,
         cumul: item.cumul,
         freq: item.freq,
         datePanne,
-        cause,
-        zone,
-        rcaId,
-        rcaStatut,
-        methode,
+        cause: item.dernierArret?.cause || null,
+        zone: item.dernierArret?.zone || null,
+        rcaId: sess?.id || null,
+        rcaStatut: sess ? 'a-realiser' : 'a-realiser',
+        methode: sess?.methode || null,
         statut: item.statut,
       })
     })
+
+    // 2. Sessions CLÔTURÉES — toujours visibles, figées, lecture seule
+    // Chaque session clôturée a sa propre ligne, même si l'équipement a un nouveau cycle actif
+    sessions
+      .filter(s => s.statut === 'cloturee')
+      .forEach(s => {
+        // Cumul et fréquence depuis l'arrêt lié à cette session précise (via incidentSessionId)
+        const linkedArret = (arretsAll || arrets).find(a => a.sessionId === s.incidentSessionId)
+        const realFreq  = linkedArret?.frequence ?? s.frequence ?? 0
+        const realCumul = linkedArret?.duration  ?? s.cumulArret ?? 0
+        rows.push({
+          key: `closed-${s.id}`,
+          rang: 0,
+          equipId: s.equipId,
+          cumul: realCumul,
+          freq: realFreq,
+          datePanne: s.dateOuverture
+            ? new Date(s.dateOuverture).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            : null,
+          cause: s.causeArret || null,
+          zone: s.zone || null,
+          rcaId: s.id,
+          rcaStatut: 'cloturee',
+          methode: s.methode || null,
+          statut: 'normal',
+          readonly: true,
+        })
+      })
 
     rows.sort((a, b) => b.cumul - a.cumul)
     rows.forEach((r, i) => r.rang = i + 1)
@@ -575,7 +846,8 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#059669', display: 'inline-block' }} />{nbClotures} clôturé{nbClotures > 1 ? 's' : ''}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 5 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 5 }}>
           {[{ key: 'all', label: 'Tous' }, { key: 'a-realiser', label: 'À réaliser' }, { key: 'cloturee', label: 'Clôturés' }].map(f => (
             <button key={f.key} onClick={() => setFilterStatut(f.key)} style={{
               padding: '4px 12px', borderRadius: 20,
@@ -585,6 +857,7 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
               fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", transition: 'all .15s',
             }}>{f.label}</button>
           ))}
+          </div>
         </div>
       </div>
 
@@ -656,7 +929,10 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
                       {isCloture ? (
                         <button
                           onClick={() => r.rcaId && onLancerRCA && onLancerRCA(r.rcaId, r.statut === 'alert' ? 2 : 1, true)}
-                          style={{ padding: '6px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#059669', fontWeight: 700, cursor: 'pointer', fontSize: 11.5, fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 8, border: '1.5px solid #a7f3d0', background: '#f0fdf4', color: '#059669', fontWeight: 700, cursor: 'pointer', fontSize: 11.5, fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                          </svg>
                           Consulter
                         </button>
                       ) : r.statut === 'alert' ? (
@@ -685,7 +961,7 @@ function RCASuiviTableView({ alertItems, arrets, seuils, onLancerRCA, search, se
 }
 
 // ─── Composant principal ───────────────────────────────────────────────────────
-export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: externalViewMode, onViewModeChange }) {
+export default function BadActors({ arrets, arretsAll, seuils, onLancerRCA, viewMode: externalViewMode, onViewModeChange }) {
   const [internalViewMode, setInternalViewMode] = useState('pareto')
   const viewMode = externalViewMode !== undefined ? externalViewMode : internalViewMode
   const setViewMode = onViewModeChange || setInternalViewMode
@@ -713,6 +989,7 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
   const histFreqRef = useRef(null)
   const paretoCumulCardRef = useRef(null)
   const paretoFreqCardRef = useRef(null)
+  const paretoViewRef = useRef(null)
 
   const paretoDebut = useMemo(() => { const [y, m, d] = paretoDebutStr.split('-').map(Number); return new Date(y, m - 1, d, 0, 0, 0) }, [paretoDebutStr])
   const paretoFin = useMemo(() => { const [y, m, d] = paretoFinStr.split('-').map(Number); return new Date(y, m - 1, d, 23, 59, 59) }, [paretoFinStr])
@@ -1012,7 +1289,12 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
             <div style={{ fontSize: 12.5, color: C.text4 }}>Changez la période ou importez des données dans l'onglet <strong>Data TUM</strong></div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', background: '#f8fafd', border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 14px 14px', overflow: 'hidden', gap: 0 }}>
+          <div ref={paretoViewRef} style={{ display: 'flex', flexDirection: 'column', background: '#f8fafd', border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 14px 14px', overflow: 'hidden', gap: 0 }}>
+
+            {/* ── Bouton export PDF vue Pareto complète ── */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 20px 0' }}>
+              <ExportParetoPDFButton containerRef={paretoViewRef} />
+            </div>
 
             {/* ── BLOC 1 : Pareto Cumul Durée — Tableau + Graphique ── */}
             <div style={{ background: '#fff', borderBottom: `2px solid ${C.border}` }}>
@@ -1103,7 +1385,10 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#0F1E35', marginBottom: 6 }}>Pareto cumul durée</div>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                       <div style={{ fontSize: 10.5, color: C.text4 }}>{badActors.length} postes techniques représentent <strong style={{ color: '#dc2626' }}>{pctCapture}%</strong> du temps d'arrêt total</div>
-                      <CopyButton cardRef={paretoCumulCardRef} filename="pareto-cumul-duree.png" />
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <CopyButton cardRef={paretoCumulCardRef} filename="pareto-cumul-duree.png" />
+                        <PDFButton cardRef={paretoCumulCardRef} filename="pareto-cumul-duree.pdf" />
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 10 }}>
@@ -1334,7 +1619,7 @@ export default function BadActors({ arrets, seuils, onLancerRCA, viewMode: exter
       {/* ─── VUE 2 : SUIVI RCA — tableau Image 1 ─── */}
       {viewMode === 'alert' && (
         <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '0 0 14px 14px', borderTop: 'none', overflow: 'hidden', minHeight: 200 }}>
-          <RCASuiviTableView alertItems={alertItems} arrets={arrets} seuils={seuils} onLancerRCA={onLancerRCA} search={search} setSearch={setSearch} />
+          <RCASuiviTableView alertItems={alertItems} arrets={arrets} arretsAll={arretsAll || arrets} seuils={seuils} onLancerRCA={onLancerRCA} search={search} setSearch={setSearch} />
         </div>
       )}
 

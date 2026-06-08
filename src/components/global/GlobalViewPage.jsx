@@ -750,8 +750,8 @@ export default function GlobalViewPage() {
     return list
   }, [allRCAs, filterSite, search, userSite])
 
-  const nbArbre  = allRCAs.filter(r => r.methode === '5why'   || r.methode === 2 || r.methode === '2').length
-  const nbKaizen = allRCAs.filter(r => r.methode === 'kaizen' || r.methode === 1 || r.methode === '1').length
+  const nbArbre  = filtered.filter(r => r.methode === '5why'   || r.methode === 2 || r.methode === '2').length
+  const nbKaizen = filtered.filter(r => r.methode === 'kaizen' || r.methode === 1 || r.methode === '1').length
 
   useEffect(() => {
     if (!selectedRCA) return undefined
@@ -821,7 +821,7 @@ export default function GlobalViewPage() {
           {/* Badges stats */}
           <div style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'6px 14px', borderRadius:20, background:'#ecfdf5', border:'1px solid #a7f3d0' }}>
             <span style={{ width:7, height:7, borderRadius:'50%', background:'#059669', flexShrink:0 }} />
-            <span style={{ fontSize:12, fontWeight:700, color:'#059669' }}>{allRCAs.length} analyse{allRCAs.length !== 1 ? 's' : ''} clôturée{allRCAs.length !== 1 ? 's' : ''}</span>
+            <span style={{ fontSize:12, fontWeight:700, color:'#059669' }}>{filtered.length} analyse{filtered.length !== 1 ? 's' : ''} clôturée{filtered.length !== 1 ? 's' : ''}</span>
           </div>
           {nbArbre > 0 && (
             <div style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'6px 14px', borderRadius:20, background:'#fef2f2', border:'1px solid #fecaca' }}>

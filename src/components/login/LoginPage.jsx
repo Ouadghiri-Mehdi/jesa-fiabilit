@@ -45,14 +45,26 @@ export default function LoginPage() {
           <img
             src="/jesa-logo.png"
             alt="JESA Reliability Hub"
-            style={{ width: 140, height: 'auto', objectFit: 'contain', marginBottom: 8 }}
+            style={{ width: 140, height: 'auto', objectFit: 'contain', marginBottom: 12 }}
           />
+          <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 800, fontSize: 28, color: '#0f1f3d', letterSpacing: '-0.5px', lineHeight: 1 }}>
+            JES<span style={{ color: '#2563eb' }}>A</span>
+          </div>
+          <div style={{ fontFamily: "'Sora', sans-serif", fontWeight: 700, fontSize: 13, color: '#0f1f3d', letterSpacing: '2.5px', marginTop: 4 }}>
+            RELIABILITY HUB
+          </div>
+          <div style={{ fontSize: 10.5, color: '#94a3b8', letterSpacing: '1.5px', marginTop: 6 }}>
+            — PLATEFORME DE FIABILITÉ INDUSTRIELLE —
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#0ea5e9', letterSpacing: '2px', marginTop: 5 }}>
+            IA
+          </div>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 18 }}>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-              Identifiant
+              Entité 
             </label>
             <input
               type="text"
